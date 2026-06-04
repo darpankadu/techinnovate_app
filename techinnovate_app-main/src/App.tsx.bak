@@ -1,0 +1,1813 @@
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Fuel, Video, Camera, Receipt, Gauge, 
+  MapPin, AlertTriangle, CheckCircle2, 
+  Car, Users, BarChart3, Shield, 
+  LogOut, Plus, Trash2, X, Play,
+  Pause, RotateCcw, Check, Globe
+} from 'lucide-react'
+import { storage, calculateDistance } from './lib/storage'
+import { googleSync, APPS_SCRIPT_URL } from './lib/googleSync'
+import { t } from './lib/translations'
+import type { Language, Role, Driver, Owner, Vehicle, Fill, Alert, CameraCapture } from './lib/types'
+import { OwnerRegister } from './components/OwnerRegister'
+
+type View = 'welcome' | 'driver-login' | 'owner-login' | 'owner-register' | 'admin-login' | 'driver-dash' | 'owner-dash' | 'admin-dash' | 'wizard'
+
+export default function App() {
+  const [view, setView] = useState<View>('welcome')
+  const [lang, setLang] = useState<Language>('en')
+  const [session, setSession] = useState<any>(null)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [syncKey, setSyncKey] = useState(0)
+
+  useEffect(() => {
+    const loadDataFromBackend = async () => {
+      console.log('loadDataFromBackend: online=', navigator.onLine, 'synced=', window.sessionStorage.getItem('synced'))
+      if (!navigator.onLine) return
+      
+      // Check for clear parameter
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('clear') === 'data') {
+        localStorage.removeItem('cng_drivers')
+        localStorage.removeItem('cng_vehicles')
+        localStorage.removeItem('cng_fills')
+        localStorage.removeItem('cng_alerts')
+        window.sessionStorage.removeItem('synced')
+        window.location.href = window.location.pathname
+        return
+      }
+      
+      // Only sync once per session (check if already synced this session)
+      if (window.sessionStorage.getItem('synced')) return
+      window.sessionStorage.setItem('synced', 'true')
+      
+      try {
+        console.log('Fetching from backend...')
+        const data = await googleSync.fetchAllData()
+        console.log('Backend data:', data)
+        
+        if (data?.success) {
+          console.log('Drivers from sheet:', data.drivers)
+          // Always use sheet data completely (replace local)
+          if (data.drivers) {
+            storage.saveDrivers(data.drivers)
+          }
+          if (data.vehicles) {
+            storage.saveVehicles(data.vehicles)
+          }
+          if (data.fills) {
+            console.log('Fill keys:', Object.keys(data.fills[0] || {}))
+            console.log('First fill raw:', data.fills[0])
+            // Handle sheet where first column header might be ' ' instead of 'id'
+            const cleanFills = data.fills.map((f: any) => {
+              const id = f.id || f[' '] || 'fill_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)
+              return {
+                ...f,
+                id,
+                videoUrl: f.videoUrl && !f.videoUrl.startsWith('data:') ? f.videoUrl : '',
+                pumpPhotoUrl: f.pumpPhotoUrl && !f.pumpPhotoUrl.startsWith('data:') ? f.pumpPhotoUrl : '',
+                receiptPhotoUrl: f.receiptPhotoUrl && !f.receiptPhotoUrl.startsWith('data:') ? f.receiptPhotoUrl : '',
+                odoPhotoUrl: f.odoPhotoUrl && !f.odoPhotoUrl.startsWith('data:') ? f.odoPhotoUrl : '',
+              }
+            })
+            storage.saveFills(cleanFills)
+            console.log('Cleaned fills sample:', cleanFills.slice(0,2).map((f: any) => ({id: f.id, video: f.videoUrl?.substring(0,60)})))
+          }
+          if (data.owners) {
+            storage.saveOwners(data.owners)
+          }
+          setSyncKey(k => k + 1)
+        } else {
+          console.log('No data or failed:', data)
+        }
+      } catch (e) {
+        console.log('Backend sync error:', e)
+      }
+    }
+    
+    const savedLang = storage.getLanguage() as Language
+    setLang(savedLang)
+    
+    const savedSession = storage.getSession()
+    if (savedSession) {
+      setSession(savedSession)
+      if (savedSession.role === 'driver') setView('driver-dash')
+      else if (savedSession.role === 'owner') setView('owner-dash')
+      else if (savedSession.role === 'admin') setView('admin-dash')
+    }
+
+    loadDataFromBackend()
+
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    // Sync offline queue when online
+    if (navigator.onLine) {
+      const queue = storage.getOfflineQueue()
+      if (queue.length > 0) {
+        const fills = storage.getFills()
+        storage.saveFills([...fills, ...queue])
+        storage.clearOfflineQueue()
+      }
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  const changeLang = (l: Language) => {
+    setLang(l)
+    storage.setLanguage(l)
+  }
+
+  const logout = () => {
+    storage.clearSession()
+    setSession(null)
+    setView('welcome')
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F5F6F8] text-[#111827] flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-100">
+        <div className="max-w-[480px] mx-auto px-4 h-14 flex items-center justify-between">
+          <img src="logo.jpg" alt="Techinnovate" className="h-8" />
+          
+          <div className="flex items-center gap-2">
+            {!isOnline && (
+              <div className="px-2.5 py-1 rounded-full bg-[#FEF3C7] border border-[#FCD34D]">
+                <span className="text-[10px] font-semibold text-[#92400E]">OFFLINE</span>
+              </div>
+            )}
+            <div className="flex bg-[#F5F6F8] rounded-lg p-0.5 border border-[#E2E6EB]">
+              {(['en', 'hi', 'gu'] as Language[]).map(l => (
+                <button
+                  key={l}
+                  onClick={() => changeLang(l)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                    lang === l ? 'bg-white text-[#111827] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'
+                  }`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {session && (
+              <button onClick={logout} className="p-2 hover:bg-[#F5F6F8] rounded-lg transition-colors">
+                <LogOut className="w-4 h-4 text-[#6B7280]" />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-[480px] w-full mx-auto">
+        <AnimatePresence mode="wait">
+          {view === 'welcome' && <WelcomeView lang={lang} setView={setView} />}
+          {view === 'driver-login' && <DriverLogin lang={lang} setView={setView} setSession={setSession} />}
+          {view === 'owner-login' && <OwnerLogin lang={lang} setView={setView} setSession={setSession} />}
+          {view === 'owner-register' && <OwnerRegister lang={lang} setView={setView} setSession={setSession} />}
+          {view === 'admin-login' && <AdminLogin lang={lang} setView={setView} setSession={setSession} />}
+          {view === 'driver-dash' && <DriverDashboard lang={lang} session={session} setView={setView} />}
+          {view === 'wizard' && <FillWizard lang={lang} session={session} setView={setView} />}
+          {view === 'owner-dash' && <OwnerDashboard lang={lang} session={session} syncKey={syncKey} key={'od'+syncKey} />}
+          {view === 'admin-dash' && <AdminDashboard lang={lang} syncKey={syncKey} />}
+        </AnimatePresence>
+      </main>
+    </div>
+  )
+}
+
+function WelcomeView({ lang, setView }: { lang: Language; setView: (v: View) => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="p-6 pt-8"
+    >
+      <div className="text-center mb-10">
+        <img src="logo.jpg" alt="Techinnovate" className="w-48 mx-auto mb-6" />
+        <p className="text-[#6B7280] text-[15px]">Fleet CNG Monitoring System</p>
+      </div>
+
+      <div className="space-y-3">
+        <span className="block text-[13px] font-medium text-[#6B7280] tracking-wide uppercase text-center">
+          {lang === 'hi' ? 'ड्राइवर लॉगिन' : lang === 'gu' ? 'ડ્રાઇવર લૉગિન' : 'Driver Login'}
+        </span>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => setView('driver-login')}
+          className="w-full"
+        >
+          <div className="flex items-center gap-4 p-6 rounded-2xl bg-[#E10600] text-white shadow-lg shadow-[#E10600]/25 transition-all hover:brightness-110">
+            <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center">
+              <Gauge className="w-7 h-7 text-white" />
+            </div>
+            <div className="flex-1 text-left">
+              <div className="font-bold text-[19px]">{lang === 'hi' ? 'ड्राइवर' : lang === 'gu' ? 'ડ્રાઇવર' : 'Driver'}</div>
+              <div className="text-[13px] text-white/80">Record fuel fills</div>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+          </div>
+        </motion.button>
+      </div>
+
+      <div className="mt-8 text-center space-y-1">
+        <button onClick={() => setView('owner-login')} className="text-[#6B7280] hover:text-[#E10600] text-[14px] underline underline-offset-2 transition-colors">
+          {lang === 'hi' ? 'मालिक लॉगिन' : lang === 'gu' ? 'માલિક લૉગિન' : 'Owner Login'}
+        </button>
+        <span className="text-[#D1D5DB] mx-2 text-[13px]">|</span>
+        <button onClick={() => setView('admin-login')} className="text-[#6B7280] hover:text-[#E10600] text-[14px] underline underline-offset-2 transition-colors">
+          {lang === 'hi' ? 'एडमिन लॉगिन' : lang === 'gu' ? 'એડમિન લૉગિન' : 'Admin Login'}
+        </button>
+      </div>
+
+      <div className="mt-12 p-4 rounded-2xl bg-gray-50">
+        <p className="text-[12px] text-[#6B7280] text-center">
+          Demo: Driver 1234/5678 | Owner: owner@demo.com/demo123 | Admin: admin@cng.com/admin123
+        </p>
+      </div>
+    </motion.div>
+  )
+}
+
+function DriverLogin({ lang, setView, setSession }: { lang: Language; setView: (v: View) => void; setSession: (s: any) => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+
+  const handleLogin = () => {
+    const drivers = storage.getDrivers()
+    console.log('Login attempt, code:', code, 'drivers:', drivers)
+    const driver = drivers.find(d => String(d.code) === String(code))
+    
+    if (driver) {
+      const session = { role: 'driver' as Role, userId: driver.id, ownerId: driver.ownerId, name: driver.name }
+      storage.setSession(session)
+      setSession(session)
+      setView('driver-dash')
+    } else {
+      setError('Invalid code')
+      setTimeout(() => setError(''), 2000)
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 pt-12">
+      <button onClick={() => setView('welcome')} className="mb-8 text-[#6B7280] hover:text-[#111827]">← Back</button>
+      
+      <div className="text-center mb-10">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#10B981] flex items-center justify-center shadow-lg shadow-[#10B981]/20">
+          <Gauge className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-[24px] font-bold mb-1 text-[#111827]">{t('driver', lang)} {t('login', lang)}</h2>
+        <p className="text-[#6B7280] text-[14px]">{t('enterCode', lang)}</p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="relative">
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={4}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="••••"
+            className="w-full h-[64px] bg-white border-2 border-[#E2E6EB] rounded-2xl text-center text-[32px] font-mono tracking-[0.5em] text-[#111827] placeholder-[#9CA3AF] focus:border-[#10B981] focus:outline-none transition-all"
+            autoFocus
+          />
+        </div>
+        
+        {error && (
+          <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-[#DC2626] text-[13px] text-center">
+            {error}
+          </motion.p>
+        )}
+
+        <button
+          onClick={handleLogin}
+          disabled={code.length !== 4}
+          className="w-full h-[56px] bg-[#10B981] disabled:bg-[#E2E6EB] disabled:text-[#9CA3AF] text-white font-semibold rounded-2xl text-[17px] transition-all hover:bg-[#059669] active:scale-[0.98]"
+        >
+          {t('login', lang)}
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v: View) => void; setSession: (s: any) => void }) {
+  const [email, setEmail] = useState('owner@demo.com')
+  const [password, setPassword] = useState('demo123')
+  const [error, setError] = useState('')
+
+  const handleLogin = () => {
+    const owners = storage.getOwners()
+    const owner = owners.find(o => o.email === email && o.password === password)
+    
+    if (owner) {
+      const session = { role: 'owner' as Role, userId: owner.id, ownerId: owner.id, name: owner.name }
+      storage.setSession(session)
+      setSession(session)
+      setView('owner-dash')
+    } else {
+      setError('Invalid credentials')
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 pt-12">
+      <button onClick={() => setView('welcome')} className="mb-8 text-[#6B7280] hover:text-[#111827]">← Back</button>
+      
+      <div className="text-center mb-10">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#3B82F6] flex items-center justify-center shadow-lg shadow-[#3B82F6]/20">
+          <BarChart3 className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-[24px] font-bold text-[#111827]">{t('owner', lang)} {t('login', lang)}</h2>
+      </div>
+
+      <div className="space-y-3">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+        />
+        {error && <p className="text-[#DC2626] text-[13px]">{error}</p>}
+        <button
+          onClick={handleLogin}
+          className="w-full h-[52px] bg-[#3B82F6] text-white font-semibold rounded-xl mt-2 hover:bg-[#2563EB] active:scale-[0.98] transition-all"
+        >
+          {t('login', lang)}
+        </button>
+        
+        <div className="mt-6 pt-6 border-t border-[#E2E6EB] text-center">
+          <p className="text-[14px] text-[#6B7280]">
+            Don't have an account?{' '}
+            <button onClick={() => setView('owner-register')} className="text-[#3B82F6] hover:text-[#2563EB] font-medium">
+              Register
+            </button>
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function AdminLogin({ lang, setView, setSession }: { lang: Language; setView: (v: View) => void; setSession: (s: any) => void }) {
+  const [email, setEmail] = useState('admin@cng.com')
+  const [password, setPassword] = useState('admin123')
+
+  const handleLogin = () => {
+    if (email === 'admin@cng.com' && password === 'admin123') {
+      const session = { role: 'admin' as Role, userId: 'admin1', name: 'Admin' }
+      storage.setSession(session)
+      setSession(session)
+      setView('admin-dash')
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 pt-12">
+      <button onClick={() => setView('welcome')} className="mb-8 text-[#6B7280] hover:text-[#111827]">← Back</button>
+      
+      <div className="text-center mb-10">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#8B5CF6] flex items-center justify-center shadow-lg shadow-[#8B5CF6]/20">
+          <Shield className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-[24px] font-bold text-[#111827]">{t('admin', lang)} {t('login', lang)}</h2>
+      </div>
+
+      <div className="space-y-3">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#8B5CF6] focus:outline-none"
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#8B5CF6] focus:outline-none"
+        />
+        <button
+          onClick={handleLogin}
+          className="w-full h-[52px] bg-[#8B5CF6] text-white font-semibold rounded-xl mt-2 hover:bg-[#7C3AED] active:scale-[0.98] transition-all"
+        >
+          {t('login', lang)}
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+function DriverDashboard({ lang, session, setView }: { lang: Language; session: any; setView: (v: View) => void }) {
+  const drivers = storage.getDrivers()
+  const driver = drivers.find(d => d.id === session.userId)
+  const vehicles = storage.getVehicles()
+  const vehicle = vehicles.find(v => v.id === driver?.assignedVehicleId)
+  const fills = storage.getFills().filter(f => f.driverId === session.userId)
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5">
+      <div className="mb-6">
+        <p className="text-[#6B7280] text-[13px] mb-1">{t('welcome', lang)},</p>
+        <h1 className="text-[28px] font-bold tracking-tight text-[#111827]">{session.name}</h1>
+      </div>
+
+      {vehicle && (
+        <div className="mb-6 p-5 rounded-[20px] bg-white border border-[#E2E6EB] shadow-sm">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider mb-1">Assigned Vehicle</p>
+              <p className="text-[20px] font-bold font-mono text-[#111827]">{vehicle.plate}</p>
+              <p className="text-[14px] text-[#6B7280]">{vehicle.model}</p>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-[#FDE8E8] flex items-center justify-center">
+              <Car className="w-5 h-5 text-[#E10600]" />
+            </div>
+          </div>
+          <div className="flex items-center gap-4 pt-3 border-t border-[#E2E6EB]">
+            <div>
+              <p className="text-[11px] text-[#6B7280]">Odometer</p>
+              <p className="text-[15px] font-medium text-[#111827]">{vehicle.currentOdo.toLocaleString()} km</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-[#6B7280]">Capacity</p>
+              <p className="text-[15px] font-medium text-[#111827]">{vehicle.capacity} kg</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={() => setView('wizard')}
+        className="w-full mb-6"
+      >
+        <div className="bg-[#E10600] rounded-[20px] shadow-lg shadow-[#E10600]/25 hover:shadow-xl hover:shadow-[#E10600]/30 transition-all p-4 flex items-center justify-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+            <Fuel className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-[18px] font-bold text-white">{t('startFill', lang)}</span>
+        </div>
+      </button>
+
+      <div>
+        <h3 className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Recent Fills</h3>
+        <div className="space-y-2.5">
+          {fills.slice(0, 5).map(fill => {
+            const v = vehicles.find(veh => veh.id === fill.vehicleId)
+            return (
+              <div key={fill.id} className="p-4 rounded-2xl bg-white border border-[#E2E6EB]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-mono text-[14px] font-medium text-[#111827]">{v?.plate}</p>
+                    <p className="text-[12px] text-[#6B7280] mt-0.5">
+                      {new Date(fill.time).toLocaleDateString()} • {fill.kgs} kg
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[16px] font-semibold text-[#111827]">₹{fill.total.toFixed(0)}</p>
+                    <div className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      fill.verified ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEF3C7] text-[#92400E]'
+                    }`}>
+                      {fill.verified ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                      {fill.verified ? t('verified', lang) : t('pending', lang)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          {fills.length === 0 && (
+            <div className="py-12 text-center">
+              <p className="text-[#9CA3AF] text-[14px]">No fills yet</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Camera Component - Critical
+function CameraModal({ 
+  mode, 
+  title, 
+  onCapture, 
+  onClose,
+  lang
+}: { 
+  mode: 'photo' | 'video'
+  title: string
+  onCapture: (capture: CameraCapture) => void
+  onClose: () => void
+  lang: Language
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [gps, setGps] = useState<{lat: number; lng: number} | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const capturedBlobRef = useRef<Blob | null>(null)
+
+  useEffect(() => {
+    startCamera()
+    getLocation()
+    return () => {
+      stream?.getTracks().forEach(t => t.stop())
+    }
+  }, [])
+
+  const getLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {},
+        { enableHighAccuracy: true, timeout: 5000 }
+      )
+    }
+  }
+
+  const startCamera = async () => {
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: mode === 'video'
+      }
+      
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
+      setStream(mediaStream)
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream
+        await videoRef.current.play()
+      }
+    } catch (err: any) {
+      setError(err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera not available. Use HTTPS.')
+    }
+  }
+
+  useEffect(() => {
+    let interval: any
+    if (isRecording) {
+      interval = setInterval(() => setRecordingTime(t => t + 1), 1000)
+    }
+    return () => clearInterval(interval)
+  }, [isRecording])
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return
+    
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(video, 0, 0)
+    
+    // Get data URL first
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    setPreview(dataUrl)
+    
+    // Then get blob and store in ref
+    canvas.toBlob((blob) => {
+      if (blob) {
+        console.log('Photo captured, blob size:', blob.size, 'type:', blob.type)
+        capturedBlobRef.current = blob
+        stream?.getTracks().forEach(t => t.stop())
+      }
+    }, 'image/jpeg', 0.85)
+  }
+
+  const startRecording = () => {
+    if (!stream) return
+    
+    chunksRef.current = []
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
+    mediaRecorderRef.current = recorder
+    
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data)
+    }
+    
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: 'video/webm' })
+      const url = URL.createObjectURL(blob)
+      setPreview(url)
+      stream?.getTracks().forEach(t => t.stop())
+    }
+    
+    recorder.start()
+    setIsRecording(true)
+    setRecordingTime(0)
+    
+    // Auto stop at 15s
+    setTimeout(() => {
+      if (recorder.state === 'recording') stopRecording()
+    }, 15000)
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+  }
+
+  const handleConfirm = () => {
+    if (!preview) return
+    
+    if (mode === 'photo') {
+      const blob = capturedBlobRef.current
+      if (blob) {
+        console.log('Confirming photo, blob size:', blob.size, 'type:', blob.type)
+        onCapture({ blob, dataUrl: preview, timestamp: Date.now(), gps: gps || undefined })
+      } else {
+        console.error('No photo blob available')
+      }
+    } else {
+      // For video, create blob from chunks
+      const blob = new Blob(chunksRef.current, { type: 'video/webm' })
+      console.log('Confirming video, blob size:', blob.size)
+      onCapture({ blob, dataUrl: preview, timestamp: Date.now(), gps: gps || undefined })
+    }
+  }
+
+  const handleRetry = () => {
+    setPreview(null)
+    setRecordingTime(0)
+    startCamera()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
+        <h2 className="text-white font-medium">{title}</h2>
+        <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+          <X className="w-5 h-5 text-white" />
+        </button>
+      </div>
+
+      {/* Camera View */}
+      <div className="relative w-full h-full">
+        {!preview ? (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/90">
+                <div className="text-center">
+                  <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                  <p className="text-white mb-2">{error}</p>
+                  <p className="text-[#6B7280] text-sm">Please allow camera access and use HTTPS</p>
+                </div>
+              </div>
+            )}
+
+            {isRecording && (
+              <div className="absolute top-20 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-red-500">
+                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                <span className="text-white font-mono text-sm">{recordingTime}s / 10s min</span>
+              </div>
+            )}
+
+            {/* Capture Button */}
+            <div className="absolute bottom-0 left-0 right-0 p-8 pb-12 bg-gradient-to-t from-black/80 to-transparent">
+              <div className="flex items-center justify-center">
+                {mode === 'photo' ? (
+                  <button
+                    onClick={capturePhoto}
+                    disabled={!!error}
+                    className="w-[72px] h-[72px] rounded-full bg-white p-1.5 active:scale-95 transition-transform disabled:opacity-50"
+                  >
+                    <div className="w-full h-full rounded-full border-[3px] border-black" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={!!error || (isRecording && recordingTime < 10)}
+                    className={`w-[72px] h-[72px] rounded-full active:scale-95 transition-all disabled:opacity-50 ${
+                      isRecording ? 'bg-red-500 p-2' : 'bg-white p-1.5'
+                    }`}
+                  >
+                    <div className={`w-full h-full ${isRecording ? 'bg-white rounded-md' : 'bg-red-500 rounded-full border-[3px] border-white'}`} />
+                  </button>
+                )}
+              </div>
+              {mode === 'video' && !isRecording && (
+                <p className="text-center text-[#6B7280] text-[13px] mt-4">Hold for minimum 10 seconds</p>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Preview */
+          <div className="w-full h-full flex flex-col bg-black">
+            <div className="flex-1 relative flex items-center justify-center p-4">
+              {mode === 'photo' ? (
+                <img src={preview} alt="Preview" className="max-w-full max-h-full object-contain rounded-xl" />
+              ) : (
+                <video src={preview} controls autoPlay className="max-w-full max-h-full rounded-xl" />
+              )}
+            </div>
+            
+            <div className="p-6 pb-10 flex gap-3">
+              <button
+                onClick={handleRetry}
+                className="flex-1 h-[52px] rounded-2xl bg-white/10 backdrop-blur text-white font-medium flex items-center justify-center gap-2 hover:bg-white/20 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                {t('retry', lang)}
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 h-[52px] rounded-2xl bg-[#EE2726] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#d41f1f] transition-colors"
+              >
+                <Check className="w-5 h-5" />
+                {t('ok', lang)}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FillWizard({ lang, session, setView }: { lang: Language; session: any; setView: (v: View) => void }) {
+  const [step, setStep] = useState(1)
+  const [showCamera, setShowCamera] = useState<'video' | 'pump' | 'receipt' | 'odo' | null>(null)
+  const [captures, setCaptures] = useState<Record<string, CameraCapture>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [form, setForm] = useState({
+    vehicleId: '',
+    station: 'VGL' as Fill['station'],
+    kgs: '',
+    rate: '78.5',
+    odoReading: '',
+  })
+
+  const vehicles = storage.getVehicles()
+  const drivers = storage.getDrivers()
+  const driver = drivers.find(d => d.id === session.userId)
+  
+  console.log('Driver:', driver, 'Vehicles:', vehicles)
+
+  useEffect(() => {
+    // Don't auto-select - let driver choose
+  }, [])
+
+  const handleCapture = (type: string, capture: CameraCapture) => {
+    setCaptures(prev => ({ ...prev, [type]: capture }))
+    setShowCamera(null)
+    if (step < 5) setStep(step + 1)
+  }
+
+  const total = parseFloat(form.kgs) * parseFloat(form.rate) || 0
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      const vehicle = vehicles.find(v => v.id === form.vehicleId || v.id === String(form.vehicleId))
+      if (!vehicle) {
+        console.log('Vehicle not found, form.vehicleId:', form.vehicleId, 'vehicles:', vehicles)
+        if (!form.vehicleId) {
+          alert('Please select a vehicle')
+          return
+        }
+      }
+      
+      if (!vehicle) return
+      
+      let distanceDiff = 0
+      let mismatch = false
+      if (captures.pump?.gps && captures.receipt?.gps) {
+        distanceDiff = calculateDistance(
+          captures.pump.gps.lat, captures.pump.gps.lng,
+          captures.receipt.gps.lat, captures.receipt.gps.lng
+        )
+        mismatch = distanceDiff > 500
+      }
+
+      const fills = storage.getFills().filter(f => f.vehicleId === form.vehicleId)
+      const lastFill = fills.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0]
+      let fuelDropPercent = 0
+      if (lastFill && vehicle) {
+        const expectedKgs = vehicle.capacity * 0.8
+        fuelDropPercent = ((expectedKgs - parseFloat(form.kgs)) / expectedKgs) * 100
+      }
+
+      const fillId = 'fill' + Date.now()
+      const fillDate = new Date().toISOString().split('T')[0]
+      const folderName = `${vehicle.plate}_${fillDate}`
+      const timestamp = Date.now()
+      
+      // Create fill with empty URLs first, then upload media in background
+      const fill: Fill = {
+        id: fillId,
+        vehicleId: form.vehicleId,
+        driverId: session.userId,
+        time: new Date().toISOString(),
+        station: form.station,
+        kgs: parseFloat(form.kgs),
+        rate: parseFloat(form.rate),
+        total,
+        videoUrl: '',
+        pumpPhotoUrl: '',
+        receiptPhotoUrl: '',
+        odoPhotoUrl: '',
+        pumpGPS: captures.pump?.gps || null,
+        receiptGPS: captures.receipt?.gps || null,
+        odoGPS: captures.odo?.gps || null,
+        odoReading: parseInt(form.odoReading),
+        distanceDiff,
+        mismatch,
+        fuelDropPercent,
+        ownerId: session.ownerId,
+        verified: false,
+      }
+
+      // Save to localStorage immediately (instant)
+      const existingFills = storage.getFills()
+      storage.saveFills([...existingFills, fill])
+
+      // Redirect instantly
+      setView('driver-dash')
+
+      // Upload media to Drive in background (no blocking)
+      const uploadResults: {type: string; url: string}[] = []
+      const uploads = [
+        captures.video && googleSync.uploadMedia(captures.video.blob, `video_${timestamp}.webm`, folderName).then(url => ({type: 'video', url})).catch(() => ({type: 'video', url: ''})),
+        captures.pump && googleSync.uploadMedia(captures.pump.blob, `pump_${timestamp}.jpg`, folderName).then(url => ({type: 'pump', url})).catch(() => ({type: 'pump', url: ''})),
+        captures.receipt && googleSync.uploadMedia(captures.receipt.blob, `receipt_${timestamp}.jpg`, folderName).then(url => ({type: 'receipt', url})).catch(() => ({type: 'receipt', url: ''})),
+        captures.odo && googleSync.uploadMedia(captures.odo.blob, `odo_${timestamp}.jpg`, folderName).then(url => ({type: 'odo', url})).catch(() => ({type: 'odo', url: ''})),
+      ].filter(Boolean)
+      
+      if (uploads.length > 0) {
+        const results = await Promise.all(uploads)
+        uploadResults.push(...results)
+      }
+      const urls = Object.fromEntries(uploadResults.map(r => [r.type, r.url]))
+
+      // Update fill with Drive URLs in localStorage + Sheets
+      const updatedFill = {
+        ...fill,
+        videoUrl: urls.video || '',
+        pumpPhotoUrl: urls.pump || '',
+        receiptPhotoUrl: urls.receipt || '',
+        odoPhotoUrl: urls.odo || '',
+      }
+      const allFills = storage.getFills().map(f => f.id === fillId ? updatedFill : f)
+      storage.saveFills(allFills)
+      // Sync to Sheets in background (direct call, avoid saveFill's localStorage duplicate)
+      const sheetPayload = {
+        action: 'addFill',
+        id: updatedFill.id,
+        vehicleId: updatedFill.vehicleId,
+        driverId: updatedFill.driverId,
+        time: updatedFill.time,
+        station: updatedFill.station,
+        kgs: updatedFill.kgs,
+        rate: updatedFill.rate,
+        total: updatedFill.total,
+        videoUrl: updatedFill.videoUrl,
+        pumpPhotoUrl: updatedFill.pumpPhotoUrl,
+        receiptPhotoUrl: updatedFill.receiptPhotoUrl,
+        odoPhotoUrl: updatedFill.odoPhotoUrl,
+        pumpGPS: updatedFill.pumpGPS ? `${updatedFill.pumpGPS.lat},${updatedFill.pumpGPS.lng}` : '',
+        receiptGPS: updatedFill.receiptGPS ? `${updatedFill.receiptGPS.lat},${updatedFill.receiptGPS.lng}` : '',
+        odoGPS: updatedFill.odoGPS ? `${updatedFill.odoGPS.lat},${updatedFill.odoGPS.lng}` : '',
+        odoReading: updatedFill.odoReading,
+        distanceDiff: updatedFill.distanceDiff,
+        mismatch: updatedFill.mismatch,
+        fuelDropPercent: updatedFill.fuelDropPercent,
+        ownerId: updatedFill.ownerId,
+        verified: updatedFill.verified,
+      }
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'follow',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify(sheetPayload),
+      }).then(r => r.text()).then(t => console.log('Sheet sync response:', t.substring(0,100))).catch(e => console.error('Sheet sync error:', e))
+
+      // Create alerts
+      if (mismatch || fuelDropPercent > 20) {
+        const alerts = storage.getAlerts()
+        if (mismatch) {
+          alerts.push({
+            id: 'alert' + Date.now(),
+            time: new Date().toISOString(),
+            event: `Location mismatch: ${Math.round(distanceDiff)}m`,
+            user: session.name,
+            type: 'location_mismatch',
+            ownerId: session.ownerId,
+            resolved: false,
+          })
+        }
+        if (fuelDropPercent > 20) {
+          alerts.push({
+            id: 'alert' + Date.now() + 1,
+            time: new Date().toISOString(),
+            event: `Fuel drop ${fuelDropPercent.toFixed(1)}%`,
+            user: session.name,
+            type: 'fuel_drop',
+            ownerId: session.ownerId,
+            resolved: false,
+          })
+        }
+        storage.saveAlerts(alerts)
+      }
+
+      // Update vehicle odo
+      const allVehicles = storage.getVehicles()
+      const updatedVehicles = allVehicles.map(v => 
+        v.id === form.vehicleId ? { ...v, currentOdo: parseInt(form.odoReading) } : v
+      )
+      storage.saveVehicles(updatedVehicles)
+
+      console.log('Fill submitted + media uploaded in background')
+    } catch (error) {
+      console.error('Submit error:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const steps = [
+    { id: 1, title: t('recordVideo', lang), icon: Video, key: 'video', done: !!captures.video },
+    { id: 2, title: t('pumpPhoto', lang), icon: Camera, key: 'pump', done: !!captures.pump },
+    { id: 3, title: t('receiptPhoto', lang), icon: Receipt, key: 'receipt', done: !!captures.receipt },
+    { id: 4, title: t('manualDetails', lang), icon: Fuel, key: 'details', done: !!form.kgs && !!form.vehicleId },
+    { id: 5, title: t('odometerPhoto', lang), icon: Gauge, key: 'odo', done: !!captures.odo },
+  ]
+
+  return (
+    <>
+      <div className="min-h-screen bg-[#F5F6F8] p-5">
+        <div className="flex items-center justify-between mb-6">
+          <button onClick={() => setView('driver-dash')} className="text-[#6B7280] hover:text-[#111827]">← Cancel</button>
+          <div className="text-center">
+            <p className="text-[12px] text-[#6B7280]">Step {step} of 5</p>
+            <div className="flex gap-1 mt-1.5">
+              {steps.map(s => (
+                <div key={s.id} className={`h-1 w-8 rounded-full transition-all ${s.id <= step ? 'bg-[#E10600]' : 'bg-[#E2E6EB]'}`} />
+              ))}
+            </div>
+          </div>
+          <div className="w-12" />
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            {step === 1 && (
+              <div className="text-center py-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#FDE8E8] border border-[#FECACA] flex items-center justify-center">
+                  <Video className="w-10 h-10 text-[#E10600]" />
+                </div>
+                <h2 className="text-[24px] font-bold mb-2 text-[#111827]">{t('recordVideo', lang)}</h2>
+                <p className="text-[#6B7280] mb-8 px-6">Record the complete CNG filling process. Minimum 10 seconds required.</p>
+                <button
+                  onClick={() => setShowCamera('video')}
+                  className="w-full max-w-[280px] h-[56px] bg-[#E10600] rounded-2xl font-semibold flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Play className="w-5 h-5" />
+                  Start Recording
+                </button>
+                {captures.video && (
+                  <div className="mt-6 p-4 rounded-2xl bg-[#DCFCE7] border border-[#BBF7D0]">
+                    <CheckCircle2 className="w-5 h-5 text-[#166534] mx-auto mb-1" />
+                    <p className="text-[13px] text-[#166534]">Video captured</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="text-center py-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#DBEAFE] border border-[#BFDBFE] flex items-center justify-center">
+                  <Camera className="w-10 h-10 text-[#3B82F6]" />
+                </div>
+                <h2 className="text-[24px] font-bold mb-2 text-[#111827]">{t('pumpPhoto', lang)}</h2>
+                <p className="text-[#6B7280] mb-8 px-6">Capture the pump meter showing KGs and price clearly.</p>
+                <button
+                  onClick={() => setShowCamera('pump')}
+                  className="w-full max-w-[280px] h-[56px] bg-[#3B82F6] rounded-2xl font-semibold flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Camera className="w-5 h-5" />
+                  Take Photo
+                </button>
+                {captures.pump && (
+                  <div className="mt-4">
+                    <img src={captures.pump.dataUrl} alt="Pump" className="w-full max-w-[300px] mx-auto rounded-xl" />
+                    {captures.pump.gps && (
+                      <p className="text-[11px] text-[#6B7280] mt-2 flex items-center justify-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {captures.pump.gps.lat.toFixed(4)}, {captures.pump.gps.lng.toFixed(4)}
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${captures.pump.gps.lat},${captures.pump.gps.lng}`} target="_blank" rel="noopener noreferrer" className="text-[#E10600] hover:underline ml-1">View</a>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="text-center py-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center">
+                  <Receipt className="w-10 h-10 text-[#92400E]" />
+                </div>
+                <h2 className="text-[24px] font-bold mb-2 text-[#111827]">{t('receiptPhoto', lang)}</h2>
+                <p className="text-[#6B7280] mb-8 px-6">Take clear photo of the payment receipt.</p>
+                <button
+                  onClick={() => setShowCamera('receipt')}
+                  className="w-full max-w-[280px] h-[56px] bg-[#F59E0B] rounded-2xl font-semibold text-white flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Receipt className="w-5 h-5" />
+                  Take Photo
+                </button>
+                {captures.receipt && (
+                  <div className="mt-4">
+                    <img src={captures.receipt.dataUrl} alt="Receipt" className="w-full max-w-[300px] mx-auto rounded-xl" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="py-4">
+                <h2 className="text-[24px] font-bold mb-6 text-center text-[#111827]">{t('manualDetails', lang)}</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[12px] text-[#6B7280] uppercase tracking-wider mb-1.5 block">{t('vehicle', lang)}</label>
+<select
+                      value={form.vehicleId}
+                      onChange={e => setForm(f => ({...f, vehicleId: e.target.value}))}
+                      className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+                    >
+                      <option value="">Select vehicle</option>
+                      {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+                    </select>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[12px] text-[#6B7280] uppercase tracking-wider mb-1.5 block">{t('station', lang)}</label>
+                      <select
+                        value={form.station}
+                        onChange={e => setForm(f => ({...f, station: e.target.value as Fill['station']}))}
+                        className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+                      >
+                        {['VGL', 'Adani', 'Gujarat Gas'].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[12px] text-[#6B7280] uppercase tracking-wider mb-1.5 block">{t('kgs', lang)}</label>
+                      <input
+                        type="number"
+                        value={form.kgs}
+                        onChange={e => setForm(f => ({...f, kgs: e.target.value}))}
+                        placeholder="0.0"
+                        className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[20px] font-mono text-center focus:border-[#3B82F6] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[12px] text-[#6B7280] uppercase tracking-wider mb-1.5 block">{t('rate', lang)}</label>
+                      <input
+                        type="number"
+                        value={form.rate}
+                        onChange={e => setForm(f => ({...f, rate: e.target.value}))}
+                        placeholder="78.5"
+                        className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[20px] font-mono text-center focus:border-[#3B82F6] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[12px] text-[#6B7280] uppercase tracking-wider mb-1.5 block">{t('odo', lang)}</label>
+                      <input
+                        type="number"
+                        value={form.odoReading}
+                        onChange={e => setForm(f => ({...f, odoReading: e.target.value}))}
+                        placeholder="0"
+                        className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[20px] font-mono text-center focus:border-[#3B82F6] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 p-5 rounded-2xl bg-white border border-[#E2E6EB]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[15px] text-[#6B7280]">Total Amount</span>
+                      <span className="text-[28px] font-bold text-[#111827]">₹{total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => setStep(5)}
+                    disabled={!form.kgs || !form.vehicleId}
+                    className="w-full h-[56px] bg-[#3B82F6] text-white font-semibold rounded-2xl mt-4 disabled:opacity-50"
+                  >
+                    Continue to Odometer
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="text-center py-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#DCFCE7] border border-[#BBF7D0] flex items-center justify-center">
+                  <Gauge className="w-10 h-10 text-[#166534]" />
+                </div>
+                <h2 className="text-[24px] font-bold mb-2 text-[#111827]">{t('odometerPhoto', lang)}</h2>
+                <p className="text-[#6B7280] mb-8 px-6">Take a clear photo of your vehicle's odometer.</p>
+                <button
+                  onClick={() => setShowCamera('odo')}
+                  className="w-full max-w-[280px] h-[56px] bg-[#10B981] rounded-2xl font-semibold flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Camera className="w-5 h-5" />
+                  Take Photo
+                </button>
+                {captures.odo && (
+                  <div className="mt-4">
+                    <img src={captures.odo.dataUrl} alt="Odometer" className="w-full max-w-[300px] mx-auto rounded-xl" />
+                  </div>
+                )}
+                
+                {captures.odo && (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="w-full h-[56px] bg-[#E10600] text-white font-semibold rounded-2xl mt-8 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <><RotateCcw className="w-4 h-4 animate-spin" /> Saving...</>
+                    ) : 'Submit Fill Entry'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="text-center py-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+                  <Gauge className="w-10 h-10 text-violet-400" />
+                </div>
+                <h2 className="text-[24px] font-bold mb-2">{t('odometerPhoto', lang)}</h2>
+                <p className="text-[#6B7280] mb-6 px-6">Capture odometer reading clearly.</p>
+                
+                <div className="max-w-[280px] mx-auto mb-4">
+                  <input
+                    type="number"
+                    value={form.odoReading}
+                    onChange={(e) => setForm({ ...form, odoReading: e.target.value })}
+                    placeholder="Enter KM reading"
+                    className="w-full h-[52px] px-4 bg-white/5 border border-white/10 rounded-xl text-center text-[18px] font-mono focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  onClick={() => setShowCamera('odo')}
+                  className="w-full max-w-[280px] h-[52px] bg-violet-500 rounded-2xl font-semibold flex items-center justify-center gap-2 mx-auto mb-3"
+                >
+                  <Camera className="w-5 h-5" />
+                  Take Photo
+                </button>
+                
+                {captures.odo && (
+                  <div className="mt-4">
+                    <img src={captures.odo.dataUrl} alt="Odo" className="w-full max-w-[300px] mx-auto rounded-xl" />
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={!captures.odo || !form.odoReading || isSubmitting}
+                  className="w-full max-w-[280px] h-[56px] bg-[#10B981] disabled:bg-[#E2E6EB] disabled:text-[#9CA3AF] rounded-2xl font-bold text-[17px] mt-8 mx-auto flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <><RotateCcw className="w-4 h-4 animate-spin" /> Saving...</>
+                  ) : (
+                    <><CheckCircle2 className="w-5 h-5" /> {t('submit', lang)}</>
+                  )}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Step indicators */}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+          {steps.map(s => (
+            <div key={s.id} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+              s.done ? 'bg-emerald-500' : s.id === step ? 'bg-white/20' : 'bg-white/5'
+            }`}>
+              {s.done ? <Check className="w-4 h-4 text-black" /> : <s.icon className="w-4 h-4 text-white/60" />}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {showCamera && (
+        <CameraModal
+          mode={showCamera === 'video' ? 'video' : 'photo'}
+          title={steps.find(s => s.key === showCamera)?.title || ''}
+          onCapture={(cap) => handleCapture(showCamera, cap)}
+          onClose={() => setShowCamera(null)}
+          lang={lang}
+        />
+      )}
+    </>
+  )
+}
+
+function OwnerDashboard({ lang, session, syncKey }: { lang: Language; session: any; syncKey: number }) {
+  const [tab, setTab] = useState<'home' | 'fills' | 'vehicles' | 'drivers' | 'media' | 'alerts'>('home')
+  const [showAddDriver, setShowAddDriver] = useState(false)
+  const [showAddVehicle, setShowAddVehicle] = useState(false)
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; label: string } | null>(null)
+
+  const fills = storage.getFills()
+  const drivers = storage.getDrivers()
+  const vehicles = storage.getVehicles()
+  const alerts = storage.getAlerts().filter(a => !a.resolved)
+
+  const todayFills = fills.filter(f => new Date(f.time).toDateString() === new Date().toDateString())
+  const pendingVerifications = fills.filter(f => !f.verified)
+  const totalSpent = fills.reduce((s, f) => s + f.total, 0)
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5">
+      <div className="mb-6">
+        <h1 className="text-[24px] font-bold text-[#111827]">Dashboard</h1>
+        <p className="text-[#6B7280] text-[14px]">{session.name}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {[
+          { label: 'Total Vehicles', value: vehicles.length, icon: Car, color: 'bg-[#3B82F6]' },
+          { label: 'Total Drivers', value: drivers.length, icon: Users, color: 'bg-[#10B981]' },
+          { label: 'Today\'s Fills', value: todayFills.length, icon: Fuel, color: 'bg-[#F59E0B]' },
+          { label: 'Pending', value: pendingVerifications.length, icon: AlertTriangle, color: 'bg-[#EF4444]' },
+        ].map(stat => (
+          <div key={stat.label} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+            <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3 shadow-lg`}>
+              <stat.icon className="w-5 h-5 text-white" />
+            </div>
+            <p className="text-[22px] font-bold text-[#111827]">{stat.value}</p>
+            <p className="text-[12px] text-[#6B7280]">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        {[
+          { key: 'home', label: 'Home', icon: BarChart3 },
+          { key: 'fills', label: t('fills', lang), icon: Fuel },
+          { key: 'media', label: 'Media', icon: Camera },
+          { key: 'vehicles', label: t('vehicles', lang), icon: Car },
+          { key: 'drivers', label: t('drivers', lang), icon: Users },
+          { key: 'alerts', label: t('alerts', lang), icon: AlertTriangle },
+        ].map(item => (
+          <button
+            key={item.key}
+            onClick={() => setTab(item.key as any)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-medium whitespace-nowrap transition-all ${
+              tab === item.key 
+                ? 'bg-[#E10600] text-white' 
+                : 'bg-white text-[#6B7280] border border-[#E2E6EB] hover:bg-[#F5F6F8]'
+            }`}
+          >
+            <item.icon className="w-4 h-4" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'home' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Vehicles', value: vehicles.length, icon: Car, color: 'text-blue-400' },
+              { label: 'Drivers', value: drivers.length, icon: Users, color: 'text-emerald-400' },
+              { label: 'Total Fills', value: fills.length, icon: Fuel, color: 'text-amber-400' },
+              { label: 'Total Spent', value: `₹${(totalSpent/1000).toFixed(1)}k`, icon: BarChart3, color: 'text-violet-400' },
+            ].map(stat => (
+              <div key={stat.label} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+                <stat.icon className={`w-5 h-5 ${stat.color} mb-2`} />
+                <p className="text-[24px] font-bold text-[#111827]">{stat.value}</p>
+                <p className="text-[12px] text-[#6B7280]">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => setShowAddDriver(true)} className="h-[48px] rounded-xl bg-white border border-[#E2E6EB] flex items-center justify-center gap-2 hover:bg-[#F5F6F8] transition-colors">
+              <Plus className="w-4 h-4 text-[#E10600]" />
+              <span className="text-[14px] font-medium text-[#111827]">{t('addDriver', lang)}</span>
+            </button>
+            <button onClick={() => setShowAddVehicle(true)} className="h-[48px] rounded-xl bg-white border border-[#E2E6EB] flex items-center justify-center gap-2 hover:bg-[#F5F6F8] transition-colors">
+              <Plus className="w-4 h-4 text-[#E10600]" />
+              <span className="text-[14px] font-medium text-[#111827]">{t('addVehicle', lang)}</span>
+            </button>
+          </div>
+
+          <div>
+            <h3 className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Drivers</h3>
+            <div className="space-y-2">
+              {drivers.map(d => {
+                const v = vehicles.find(veh => veh.id === d.assignedVehicleId)
+                return (
+                  <div key={d.id} className="p-3.5 rounded-xl bg-white border border-[#E2E6EB] flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-[14px] text-[#111827]">{d.name}</p>
+                      <p className="text-[12px] text-[#6B7280]">Code: {d.code} • {v?.plate || 'No vehicle'}</p>
+                    </div>
+                    <button onClick={async () => {
+                      storage.saveDrivers(drivers.filter(x => x.id !== d.id))
+                      await googleSync.deleteDriver(d.id)
+                      window.location.reload()
+                    }} className="p-2 hover:bg-[#F5F6F8] rounded-lg">
+                      <Trash2 className="w-4 h-4 text-[#9CA3AF]" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'fills' && (
+        <div className="space-y-2">
+          {fills.slice().reverse().map(fill => {
+            const v = vehicles.find(veh => veh.id === fill.vehicleId)
+            const d = drivers.find(drv => drv.id === fill.driverId)
+            return (
+              <div key={fill.id} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[14px] text-[#111827]">{v?.plate || 'Unknown'} — ₹{fill.total}</p>
+                    <p className="text-[12px] text-[#6B7280]">
+                      {d?.name || 'Unknown'} • {fill.station} • {fill.kgs}kg @ ₹{fill.rate}/kg
+                    </p>
+                    <p className="text-[11px] text-[#6B7280]">
+                      {new Date(fill.time).toLocaleString()} • ODO: {fill.odoReading.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    {fill.pumpGPS && (
+                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${fill.pumpGPS.lat},${fill.pumpGPS.lng}`} target="_blank" rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E2E6EB] text-[#E10600] text-[11px] font-medium hover:bg-[#FDE8E8] transition-colors flex items-center gap-1"
+                      >
+                        <MapPin className="w-3 h-3" /> Directions
+                      </a>
+                    )}
+                    <button
+                    onClick={() => {
+                      const updated = fills.map(f => f.id === fill.id ? { ...f, verified: !f.verified } : f)
+                      storage.saveFills(updated)
+                      window.location.reload()
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-colors ${
+                      fill.verified ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#F5F6F8] text-[#6B7280] hover:bg-[#E2E6EB]'
+                    }`}
+                  >
+                    {fill.verified ? 'Verified' : 'Verify'}
+                  </button>
+                </div>
+                <div className={`px-2.5 py-1 rounded-full text-[11px] font-medium inline-flex items-center gap-1 ${
+                  fill.mismatch ? 'bg-[#FEE2E2] text-[#991B1B]' : 'bg-[#DCFCE7] text-[#166534]'
+                }`}>
+                  <MapPin className="w-3 h-3" />
+                  {fill.mismatch ? `${Math.round(fill.distanceDiff)}m off` : '\u003C500m'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'drivers' && (
+        <div className="space-y-2">
+          {drivers.length === 0 ? (
+            <div className="py-16 text-center">
+              <Users className="w-12 h-12 text-[#D1D5DB] mx-auto mb-3" />
+              <p className="text-[#6B7280]">No drivers yet</p>
+              <button onClick={() => setShowAddDriver(true)} className="mt-3 px-5 py-2.5 rounded-xl bg-[#E10600] text-white text-[14px] font-medium">
+                {t('addDriver', lang)}
+              </button>
+            </div>
+          ) : drivers.map(d => {
+            const v = vehicles.find(veh => veh.id === d.assignedVehicleId)
+            const dFills = fills.filter(f => f.driverId === d.id)
+            return (
+              <div key={d.id} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-[15px] text-[#111827]">{d.name}</p>
+                    <p className="text-[12px] text-[#6B7280]">Code: {d.code} • {v?.plate || 'No vehicle'}</p>
+                    <p className="text-[11px] text-[#6B7280]">{dFills.length} fills by this driver</p>
+                  </div>
+                  <button onClick={async () => {
+                    storage.saveDrivers(drivers.filter(x => x.id !== d.id))
+                    await googleSync.deleteDriver(d.id)
+                    window.location.reload()
+                  }} className="p-2 hover:bg-[#FEE2E2] rounded-lg">
+                    <Trash2 className="w-4 h-4 text-[#EF4444]" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'vehicles' && (
+        <div className="space-y-3">
+          {vehicles.map(v => {
+            const vFills = fills.filter(f => f.vehicleId === v.id)
+            const spent = vFills.reduce((s, f) => s + f.total, 0)
+            return (
+              <div key={v.id} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="font-mono font-bold text-[16px] text-[#111827]">{v.plate}</p>
+                    <p className="text-[13px] text-[#6B7280]">{v.model}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="px-2.5 py-1 rounded-full bg-[#F5F6F8] text-[11px] font-medium text-[#6B7280]">
+                      {vFills.length} fills
+                    </div>
+                    <button onClick={async () => {
+                      storage.saveVehicles(vehicles.filter(x => x.id !== v.id))
+                      await googleSync.deleteVehicle(v.id)
+                      window.location.reload()
+                    }} className="p-1.5 hover:bg-[#FEE2E2] rounded-lg">
+                      <Trash2 className="w-4 h-4 text-[#EF4444]" />
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#E2E6EB]">
+                  <div>
+                    <p className="text-[11px] text-[#6B7280]">Odometer</p>
+                    <p className="text-[14px] font-medium text-[#111827]">{v.currentOdo.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#6B7280]">Total KG</p>
+                    <p className="text-[14px] font-medium text-[#111827]">{vFills.reduce((s, f) => s + f.kgs, 0).toFixed(1)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#6B7280]">Spent</p>
+                    <p className="text-[14px] font-medium text-[#111827]">₹{spent.toFixed(0)}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'media' && (
+        <div className="space-y-3">
+          {fills.slice().reverse().map(fill => {
+            const v = vehicles.find(veh => veh.id === fill.vehicleId)
+            const d = drivers.find(drv => drv.id === fill.driverId)
+            const mediaItems = [
+              { label: 'Video', url: fill.videoUrl, isVideo: true },
+              { label: 'Pump', url: fill.pumpPhotoUrl, isVideo: false },
+              { label: 'Receipt', url: fill.receiptPhotoUrl, isVideo: false },
+              { label: 'Odo', url: fill.odoPhotoUrl, isVideo: false },
+            ]
+            return (
+              <div key={fill.id} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="font-mono text-[14px] font-medium text-[#111827]">{v?.plate}</p>
+                    <p className="text-[12px] text-[#6B7280]">{d?.name} • {new Date(fill.time).toLocaleString()}</p>
+                  </div>
+                  <div className={`px-2.5 py-1 rounded-full text-[11px] font-medium flex items-center gap-1 ${
+                    fill.mismatch ? 'bg-[#FEE2E2] text-[#991B1B]' : 'bg-[#DCFCE7] text-[#166534]'
+                  }`}>
+                    <MapPin className="w-3 h-3" />
+                    {fill.mismatch ? `${Math.round(fill.distanceDiff)}m` : '\u003C500m'}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {mediaItems.map((m, i) => (
+                    <a key={i} href={m.url && m.url !== '[DRIVE]' ? m.url : '#'} target="_blank" rel="noopener noreferrer"
+                      className={`block aspect-video rounded-lg border overflow-hidden relative group ${m.url && m.url !== '[DRIVE]' ? 'cursor-pointer bg-[#1F2937] border-[#374151]' : 'cursor-default bg-[#F5F6F8] border-[#E2E6EB]'}`}
+                      onClick={e => { if (!m.url || m.url === '[DRIVE]') e.preventDefault() }}
+                    >
+                      {m.url && m.url !== '[DRIVE]' ? (
+                        m.isVideo ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+                              <Play className="w-7 h-7 text-white ml-0.5" />
+                            </div>
+                          </div>
+                        ) : (
+                          <img src={m.url} alt={m.label} className="w-full h-full object-cover" />
+                        )
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-[#F5F6F8]">
+                          <Camera className="w-5 h-5 text-[#D1D5DB]" />
+                          <span className="text-[10px] text-[#D1D5DB]">{m.label}</span>
+                        </div>
+                      )}
+                    </a>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-[#E2E6EB]">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-[11px] text-[#6B7280]">KGs</p>
+                      <p className="text-[14px] font-medium text-[#111827]">{fill.kgs}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-[#6B7280]">Total</p>
+                      <p className="text-[14px] font-medium text-[#111827]">₹{fill.total}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {fill.pumpGPS && (
+                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${fill.pumpGPS.lat},${fill.pumpGPS.lng}`} target="_blank" rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 rounded-lg border border-[#E2E6EB] text-[#E10600] text-[11px] font-medium hover:bg-[#FDE8E8] transition-colors flex items-center gap-1"
+                      >
+                        <MapPin className="w-3 h-3" /> Directions
+                      </a>
+                    )}
+                    <button
+                    onClick={() => {
+                      const updated = fills.map(f => f.id === fill.id ? { ...f, verified: !f.verified } : f)
+                      storage.saveFills(updated)
+                      window.location.reload()
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                      fill.verified ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#F5F6F8] text-[#6B7280] hover:bg-[#E2E6EB]'
+                    }`}
+                  >
+                    {fill.verified ? 'Verified' : 'Verify'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'alerts' && (
+        <div className="space-y-2.5">
+          {alerts.length === 0 ? (
+            <div className="py-16 text-center">
+              <CheckCircle2 className="w-12 h-12 text-[#10B981] mx-auto mb-3" />
+              <p className="text-[#6B7280]">No active alerts</p>
+            </div>
+          ) : alerts.map(alert => (
+            <div key={alert.id} className="p-4 rounded-2xl bg-[#FEE2E2] border border-[#FECACA]">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#FECACA] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4 text-[#991B1B]" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-[14px] mb-1 text-[#111827]">{alert.event}</p>
+                  <p className="text-[12px] text-[#6B7280]">{alert.user} • {new Date(alert.time).toLocaleString()}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const allAlerts = storage.getAlerts()
+                    storage.saveAlerts(allAlerts.map(a => a.id === alert.id ? { ...a, resolved: true } : a))
+                    window.location.reload()
+                  }}
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-white hover:bg-[#F5F6F8] transition-colors text-[#6B7280]"
+                >
+                  Resolve
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxMedia && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur flex items-center justify-center p-4" onClick={() => setLightboxMedia(null)}>
+          <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setLightboxMedia(null)} className="absolute -top-10 right-0 text-white/70 hover:text-white text-[14px]">
+              Close ✕
+            </button>
+            {lightboxMedia.url.match(/\.(mp4|webm|ogg|mov)$/i) || lightboxMedia.label === 'Video' ? (
+              <video src={lightboxMedia.url.replace('uc?id=', 'uc?export=download&id=')} controls autoPlay className="max-w-[90vw] max-h-[85vh] rounded-xl" />
+            ) : (
+              <img src={lightboxMedia.url} alt={lightboxMedia.label} className="max-w-[90vw] max-h-[85vh] rounded-xl object-contain" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Driver Modal */}
+      {showAddDriver && (
+        <AddDriverModal lang={lang} ownerId={session.ownerId} onClose={() => setShowAddDriver(false)} />
+      )}
+      {showAddVehicle && (
+        <AddVehicleModal lang={lang} ownerId={session.ownerId} onClose={() => setShowAddVehicle(false)} />
+      )}
+    </motion.div>
+  )
+}
+
+function AddDriverModal({ lang, ownerId, onClose }: { lang: Language; ownerId: string; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [code, setCode] = useState('')
+  const vehicles = storage.getVehicles().filter(v => v.ownerId === ownerId)
+  const [vehicleId, setVehicleId] = useState('')
+
+  const handleSave = async () => {
+    const newDriver = {
+      id: 'drv' + Date.now(),
+      name,
+      code,
+      assignedVehicleId: vehicleId || null,
+      ownerId,
+      status: 'active' as const,
+      createdAt: new Date().toISOString(),
+    }
+    
+    const drivers = storage.getDrivers()
+    drivers.push(newDriver)
+    storage.saveDrivers(drivers)
+    
+    await googleSync.addDriver({
+      id: newDriver.id,
+      name: newDriver.name,
+      code: newDriver.code,
+      assignedVehicleId: newDriver.assignedVehicleId,
+      ownerId: newDriver.ownerId,
+    })
+    
+    onClose()
+    window.location.reload()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur flex items-end sm:items-center justify-center p-4">
+      <div className="w-full max-w-[400px] bg-white rounded-[24px] border border-[#E2E6EB] p-6 shadow-xl">
+        <h3 className="text-[20px] font-bold mb-5 text-[#111827]">{t('addDriver', lang)}</h3>
+        <div className="space-y-3">
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={t('name', lang)} className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl" />
+          <input value={code} onChange={e => setCode(e.target.value)} placeholder={t('code', lang) + ' (4 digits)'} maxLength={4} className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl font-mono" />
+          <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl">
+            <option value="">No vehicle</option>
+            {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+          </select>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[#F5F6F8] font-medium text-[#6B7280]">{t('cancel', lang)}</button>
+          <button onClick={handleSave} disabled={!name || code.length !== 4} className="flex-1 h-12 rounded-xl bg-[#E10600] font-medium text-white disabled:opacity-50">{t('save', lang)}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddVehicleModal({ lang, ownerId, onClose }: { lang: Language; ownerId: string; onClose: () => void }) {
+  const [plate, setPlate] = useState('')
+  const [model, setModel] = useState('')
+  const [odo, setOdo] = useState('')
+  const [capacity, setCapacity] = useState('60')
+
+  const handleSave = async () => {
+    const newVehicle = {
+      id: 'veh' + Date.now(),
+      plate,
+      model,
+      initialOdo: parseInt(odo),
+      currentOdo: parseInt(odo),
+      capacity: parseInt(capacity),
+      ownerId,
+      status: 'active' as const,
+    }
+    
+    const vehicles = storage.getVehicles()
+    vehicles.push(newVehicle)
+    storage.saveVehicles(vehicles)
+    
+    await googleSync.addVehicle({
+      id: newVehicle.id,
+      plate: newVehicle.plate,
+      model: newVehicle.model,
+      initialOdo: newVehicle.initialOdo,
+      currentOdo: newVehicle.currentOdo,
+      capacity: newVehicle.capacity,
+      ownerId: newVehicle.ownerId,
+    })
+    
+    onClose()
+    window.location.reload()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur flex items-end sm:items-center justify-center p-4">
+      <div className="w-full max-w-[400px] bg-white rounded-[24px] border border-[#E2E6EB] p-6 shadow-xl">
+        <h3 className="text-[20px] font-bold mb-5 text-[#111827]">{t('addVehicle', lang)}</h3>
+        <div className="space-y-3">
+          <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} placeholder={t('plate', lang)} className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl font-mono" />
+          <input value={model} onChange={e => setModel(e.target.value)} placeholder={t('model', lang)} className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl" />
+          <input value={odo} onChange={e => setOdo(e.target.value)} placeholder="Initial Odometer" type="number" className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl" />
+          <input value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="Capacity (kg)" type="number" className="w-full h-12 px-4 bg-[#F5F6F8] border border-[#E2E6EB] rounded-xl" />
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[#F5F6F8] font-medium text-[#6B7280]">{t('cancel', lang)}</button>
+          <button onClick={handleSave} disabled={!plate || !model} className="flex-1 h-12 rounded-xl bg-[#E10600] font-medium text-white disabled:opacity-50">{t('save', lang)}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AdminDashboard({ lang, syncKey }: { lang: Language; syncKey: number }) {
+  const owners = useMemo(() => storage.getOwners(), [syncKey])
+  const drivers = useMemo(() => storage.getDrivers(), [syncKey])
+  const vehicles = useMemo(() => storage.getVehicles(), [syncKey])
+  const fills = useMemo(() => storage.getFills(), [syncKey])
+  const alerts = useMemo(() => storage.getAlerts(), [syncKey])
+
+  return (
+    <div className="p-5">
+      <h1 className="text-[24px] font-bold mb-6 text-[#111827]">Admin Dashboard</h1>
+      
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {[
+          { label: 'Owners', value: owners.length },
+          { label: 'Drivers', value: drivers.length },
+          { label: 'Vehicles', value: vehicles.length },
+          { label: 'Fills', value: fills.length },
+          { label: 'Alerts', value: alerts.filter(a => !a.resolved).length },
+          { label: 'Revenue', value: `₹${(fills.reduce((s, f) => s + f.total, 0)/1000).toFixed(0)}k` },
+        ].map(stat => (
+          <div key={stat.label} className="p-4 rounded-2xl bg-white border border-[#E2E6EB] shadow-sm">
+            <p className="text-[22px] font-bold text-[#111827]">{stat.value}</p>
+            <p className="text-[12px] text-[#6B7280]">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">All Owners</h3>
+          <div className="space-y-2">
+            {owners.map(o => (
+              <div key={o.id} className="p-3.5 rounded-xl bg-white border border-[#E2E6EB]">
+                <p className="font-medium text-[14px] text-[#111827]">{o.business}</p>
+                <p className="text-[12px] text-[#6B7280]">{o.name} • {o.email}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
