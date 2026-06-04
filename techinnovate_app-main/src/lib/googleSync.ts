@@ -2,7 +2,7 @@ import type { Fill } from './types'
 import { storage } from './storage'
 
 // Your deployed Apps Script - UPDATE THIS URL after deploying v3.0 backend
-export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUpsxThHu-3tE509FcKe6TyMRsqXX2k6t7_F-FPjN7P6dD6j4ZWyBmCwNxjUX59tu2gA/exec'
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwAg0JMbOMw_frL3RgUhHigWcRYDzW8zgt927aqP-PRod0SolsznO2cpIL8QGQc8hw/exec'
 
 export const googleSync = {
   enabled: true,
