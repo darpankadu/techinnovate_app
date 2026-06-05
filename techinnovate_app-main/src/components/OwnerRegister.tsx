@@ -57,8 +57,21 @@ export function OwnerRegister({ lang, setView, setSession }: {
         return
       }
 
+      // Generate consistent ID format (e.g., own_sarvam_001)
+      const cleanPrefix = form.business.trim().toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '') || 'owner'
+      let seq = 1
+      owners.forEach(o => {
+        const match = String(o.id).match(new RegExp('^own_' + cleanPrefix + '_(\\d+)$'))
+        if (match) {
+          const num = parseInt(match[1])
+          if (num >= seq) seq = num + 1
+        }
+      })
+      const seqStr = String(seq).padStart(3, '0')
+      const ownerId = `own_${cleanPrefix}_${seqStr}`
+
       const newOwner = {
-        id: 'own' + Date.now(),
+        id: ownerId,
         name: form.name,
         email: form.email,
         phone: form.phone,
