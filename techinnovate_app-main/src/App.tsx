@@ -30,8 +30,21 @@ function normalizeKeys(obj: any, expectedKeys: Record<string, string>): any {
     if (!mapped && normalized === '' && !emptyKeyMapped && 'id' in expectedKeys) {
       result['id'] = obj[key]
       emptyKeyMapped = true
+    } else if (mapped) {
+      // Smart owner ID & credit limit fallback to handle duplicate/shifted columns
+      if (mapped === 'id' && 'creditLimit' in expectedKeys) {
+        const valStr = String(obj[key]).trim()
+        if (valStr.startsWith('own')) {
+          result['id'] = obj[key]
+        } else {
+          // If the 'id' column has a non-owner ID value (like a limit 50000), treat it as creditLimit
+          result['creditLimit'] = parseFloat(valStr) || 0
+        }
+      } else {
+        result[mapped] = obj[key]
+      }
     } else {
-      result[mapped || key] = obj[key]
+      result[key] = obj[key]
     }
   }
   return result
