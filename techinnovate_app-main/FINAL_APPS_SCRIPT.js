@@ -62,6 +62,15 @@ function setupOrMigrate() {
   
   try {
     const ss = SpreadsheetApp.openById(SHEET_ID);
+    
+    // Fix any existing shifted owner rows automatically
+    Logger.log('Running automatic check/fix for shifted owner data...');
+    try {
+      fixExistingShiftedOwners(ss);
+    } catch (e) {
+      Logger.log('Error running fixExistingShiftedOwners: ' + e);
+    }
+    
     const migrationNeeded = checkMigrationNeeded(ss);
     
     if (migrationNeeded.needsMigration) {
@@ -233,6 +242,140 @@ function json(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function findColumnIndex(headers, columnName) {
+  const cleanTarget = String(columnName).toLowerCase().replace(/[\s_-]/g, '');
+  for (let i = 0; i < headers.length; i++) {
+    const cleanHeader = String(headers[i]).toLowerCase().replace(/[\s_-]/g, '');
+    if (cleanHeader === cleanTarget) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function appendRowDynamically(sheet, data, sheetConfigName) {
+  const headers = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+  const rowData = new Array(headers.length).fill('');
+  
+  const sheetConfig = CONFIG.SHEETS[sheetConfigName] || {};
+  const expectedHeaders = sheetConfig.headers || [];
+  const configDefaults = sheetConfig.defaults || [];
+  
+  headers.forEach((h, i) => {
+    const cleanHeader = String(h).trim().toLowerCase().replace(/[\s_-]/g, '');
+    
+    // 1. Special case: empty header in first column holds the primary ID
+    if (cleanHeader === '' && i === 0) {
+      rowData[i] = data.id || data.ownerId || data.driverId || data.vehicleId || data.fillId || data.alertId || data.actionId || data.paymentId || '';
+      return;
+    }
+    
+    if (cleanHeader === '') {
+      rowData[i] = '';
+      return;
+    }
+    
+    // 2. Find matching key in incoming data
+    let val = undefined;
+    let possibleKeys = [cleanHeader];
+    
+    if (cleanHeader === 'id') {
+      possibleKeys = ['id', 'ownerid', 'driverid', 'vehicleid', 'fillid', 'alertid', 'actionid', 'paymentid'];
+    } else if (cleanHeader === 'notes' || cleanHeader === 'adminnotes') {
+      possibleKeys = ['notes', 'adminnotes', 'reason'];
+    } else if (cleanHeader === 'assignedvehicleid') {
+      possibleKeys = ['assignedvehicleid', 'vehicleid'];
+    }
+    
+    for (const key of Object.keys(data)) {
+      const cleanKey = String(key).trim().toLowerCase().replace(/[\s_-]/g, '');
+      if (possibleKeys.includes(cleanKey)) {
+        val = data[key];
+        break;
+      }
+    }
+    
+    // 3. Search config defaults
+    if (val === undefined) {
+      const expectedIndex = expectedHeaders.indexOf(h);
+      if (expectedIndex >= 0 && configDefaults.length > 0) {
+        const defaultStartIdx = expectedHeaders.length - configDefaults.length;
+        if (expectedIndex >= defaultStartIdx) {
+          val = configDefaults[expectedIndex - defaultStartIdx];
+        }
+      }
+    }
+    
+    // 4. Default fallbacks
+    if (val === undefined) {
+      if (['creditlimit'].includes(cleanHeader)) val = 50000;
+      else if (['creditused', 'totalpaid', 'kgs', 'rate', 'total', 'initialodo', 'currentodo', 'capacity', 'distancediff', 'fueldroppercent', 'amount'].includes(cleanHeader)) val = 0;
+      else if (['creditfrozen', 'mismatch', 'verified', 'resolved'].includes(cleanHeader)) val = false;
+      else if (['status'].includes(cleanHeader)) val = 'active';
+      else if (['createdat', 'time'].includes(cleanHeader)) val = new Date().toISOString();
+      else val = '';
+    }
+    
+    // 5. Types conversions & parsing
+    if (typeof val === 'boolean') {
+      // Keep as boolean
+    } else if (val !== null && val !== undefined && val !== '') {
+      if (['creditlimit', 'creditused', 'totalpaid', 'kgs', 'rate', 'total', 'distancediff', 'fueldroppercent', 'amount'].includes(cleanHeader)) {
+        val = parseFloat(val) || 0;
+      } else if (['initialodo', 'currentodo', 'capacity', 'odoreading'].includes(cleanHeader)) {
+        val = parseInt(val) || 0;
+      } else if (['creditfrozen', 'mismatch', 'verified', 'resolved'].includes(cleanHeader)) {
+        val = (val === true || val === 'true');
+      }
+    }
+    
+    rowData[i] = val;
+  });
+  
+  sheet.appendRow(rowData);
+}
+
+function fixExistingShiftedOwners(ss) {
+  const sheet = ss.getSheetByName('Owners');
+  if (!sheet) return;
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  
+  const colA = 0;
+  const idIdx = findColumnIndex(headers, 'id');
+  const creditLimitIdx = findColumnIndex(headers, 'creditLimit');
+  const creditUsedIdx = findColumnIndex(headers, 'creditUsed');
+  const creditFrozenIdx = findColumnIndex(headers, 'creditFrozen');
+  const totalPaidIdx = findColumnIndex(headers, 'totalPaid');
+  
+  if (idIdx === -1) return;
+  
+  let fixedCount = 0;
+  for (let i = 1; i < values.length; i++) {
+    const rowNum = i + 1;
+    const firstColVal = String(values[i][colA]).trim();
+    const idVal = String(values[i][idIdx]).trim();
+    
+    if (firstColVal.startsWith('own') && (!idVal.startsWith('own') || idVal === '' || !isNaN(idVal))) {
+      const realOwnerId = firstColVal;
+      const creditLimitVal = parseFloat(values[i][idIdx]) || 50000;
+      const creditUsedVal = parseFloat(values[i][creditLimitIdx]) || 0;
+      const creditFrozenVal = (values[i][creditUsedIdx] === true || values[i][creditUsedIdx] === 'true');
+      const totalPaidVal = parseFloat(values[i][creditFrozenIdx]) || 0;
+      
+      sheet.getRange(rowNum, idIdx + 1).setValue(realOwnerId);
+      if (creditLimitIdx !== -1) sheet.getRange(rowNum, creditLimitIdx + 1).setValue(creditLimitVal);
+      if (creditUsedIdx !== -1) sheet.getRange(rowNum, creditUsedIdx + 1).setValue(creditUsedVal);
+      if (creditFrozenIdx !== -1) sheet.getRange(rowNum, creditFrozenIdx + 1).setValue(creditFrozenVal);
+      if (totalPaidIdx !== -1) sheet.getRange(rowNum, totalPaidIdx + 1).setValue(totalPaidVal);
+      
+      fixedCount++;
+      Logger.log('Fixed shifted owner row ' + rowNum + ': ' + realOwnerId);
+    }
+  }
+  Logger.log('Automatic fix completed. Fixed ' + fixedCount + ' rows.');
+}
+
 // ============= MAIN API =============
 function doPost(e) {
   try {
@@ -340,38 +483,50 @@ function handleAddFill(data, SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName('Fills');
   
-  sheet.appendRow([
-    data.id, data.vehicleId, data.driverId, data.time, data.station,
-    parseFloat(data.kgs) || 0, parseFloat(data.rate) || 0, parseFloat(data.total) || 0,
-    data.videoUrl || '', data.pumpPhotoUrl || '', data.receiptPhotoUrl || '', data.odoPhotoUrl || '',
-    data.pumpGPS || '', data.receiptGPS || '', data.odoGPS || '',
-    parseInt(data.odoReading) || 0, parseFloat(data.distanceDiff) || 0,
-    data.mismatch === true || data.mismatch === 'true', parseFloat(data.fuelDropPercent) || 0,
-    data.ownerId, data.verified === true || data.verified === 'true',
-    data.verifiedBy || '', data.verifiedAt || '', data.adminNotes || ''
-  ]);
+  appendRowDynamically(sheet, data, 'Fills');
   
   // Update vehicle odometer
   try {
     const vSheet = ss.getSheetByName('Vehicles');
     const vData = vSheet.getDataRange().getValues();
-    for (let i = 1; i < vData.length; i++) {
-      if (vData[i][0] === data.vehicleId) {
-        vSheet.getRange(i + 1, 5).setValue(parseInt(data.odoReading) || 0);
-        break;
+    const vHeaders = vData[0];
+    const currentOdoIdx = findColumnIndex(vHeaders, 'currentOdo');
+    const vIdIdx = findColumnIndex(vHeaders, 'id');
+    const checkIdx = vIdIdx >= 0 ? vIdIdx : 0;
+    
+    if (currentOdoIdx >= 0) {
+      for (let i = 1; i < vData.length; i++) {
+        if (String(vData[i][checkIdx]) === String(data.vehicleId)) {
+          vSheet.getRange(i + 1, currentOdoIdx + 1).setValue(parseInt(data.odoReading) || 0);
+          break;
+        }
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    Logger.log('Error updating vehicle odometer: ' + err);
+  }
   
   // Add alert if needed
   if (data.mismatch || parseFloat(data.fuelDropPercent) > 20) {
-    const aSheet = ss.getSheetByName('Alerts');
-    aSheet.appendRow([
-      'alert_' + Date.now(), data.time,
-      data.mismatch ? 'Location mismatch' : 'Fuel drop',
-      data.driverId, data.mismatch ? 'location_mismatch' : 'fuel_drop',
-      data.ownerId, false, '', '', '', 'high'
-    ]);
+    try {
+      const aSheet = ss.getSheetByName('Alerts');
+      const alertData = {
+        id: 'alert_' + Date.now(),
+        time: data.time || new Date().toISOString(),
+        event: data.mismatch ? 'Location mismatch' : 'Fuel drop',
+        user: data.driverId || '',
+        type: data.mismatch ? 'location_mismatch' : 'fuel_drop',
+        ownerId: data.ownerId || '',
+        resolved: false,
+        resolvedBy: '',
+        resolvedAt: '',
+        resolutionNote: '',
+        severity: 'high'
+      };
+      appendRowDynamically(aSheet, alertData, 'Alerts');
+    } catch (err) {
+      Logger.log('Error adding alert: ' + err);
+    }
   }
   
   return json({ success: true, id: data.id });
@@ -384,22 +539,25 @@ function handleUpdateOwner(data, SHEET_ID) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   
-  const colMap = {};
-  headers.forEach((h, i) => colMap[h] = i);
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
   
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.ownerId) {
+    if (String(values[i][checkIdx]) === String(data.ownerId)) {
       const rowNum = i + 1;
       const updates = [];
       
       const fields = ['creditLimit', 'creditUsed', 'creditFrozen', 'totalPaid', 'lastPaymentDate', 'notes', 'status'];
       fields.forEach(field => {
-        if (data[field] !== undefined && colMap[field] !== undefined) {
-          let value = data[field];
-          if (field === 'creditFrozen') value = value === true || value === 'true';
-          else if (['creditLimit', 'creditUsed', 'totalPaid'].includes(field)) value = parseFloat(value) || 0;
-          sheet.getRange(rowNum, colMap[field] + 1).setValue(value);
-          updates.push(field);
+        if (data[field] !== undefined) {
+          const colIdx = findColumnIndex(headers, field);
+          if (colIdx >= 0) {
+            let value = data[field];
+            if (field === 'creditFrozen') value = value === true || value === 'true';
+            else if (['creditLimit', 'creditUsed', 'totalPaid'].includes(field)) value = parseFloat(value) || 0;
+            sheet.getRange(rowNum, colIdx + 1).setValue(value);
+            updates.push(field);
+          }
         }
       });
       
@@ -414,37 +572,53 @@ function handleAddPaymentEntry(data, SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const paymentSheet = ss.getSheetByName('PaymentEntries');
   
-  // Check duplicates
+  // Check duplicates dynamically
   const existingData = paymentSheet.getDataRange().getValues();
+  const headers = existingData[0];
+  const createdAtIdx = findColumnIndex(headers, 'createdAt');
+  const ownerIdIdx = findColumnIndex(headers, 'ownerId');
+  const amountIdx = findColumnIndex(headers, 'amount');
+  const idIdx = findColumnIndex(headers, 'id');
+  
   const now = Date.now();
   
-  for (let i = 1; i < existingData.length; i++) {
-    const existingTime = new Date(existingData[i][6]).getTime();
-    const existingOwner = existingData[i][1];
-    const existingAmount = parseFloat(existingData[i][2]) || 0;
-    
-    if (existingOwner === data.ownerId && existingAmount === (parseFloat(data.amount) || 0) && (now - existingTime) < 5000) {
-      return json({ success: true, id: existingData[i][0], duplicate: true });
+  if (ownerIdIdx >= 0 && amountIdx >= 0 && createdAtIdx >= 0) {
+    for (let i = 1; i < existingData.length; i++) {
+      const existingTime = new Date(existingData[i][createdAtIdx]).getTime();
+      const existingOwner = String(existingData[i][ownerIdIdx]).trim();
+      const existingAmount = parseFloat(existingData[i][amountIdx]) || 0;
+      
+      if (existingOwner === String(data.ownerId).trim() && existingAmount === (parseFloat(data.amount) || 0) && (now - existingTime) < 5000) {
+        const dupId = idIdx >= 0 ? existingData[i][idIdx] : 'pay_dup';
+        return json({ success: true, id: dupId, duplicate: true });
+      }
     }
   }
   
   const paymentId = 'pay_' + now;
-  paymentSheet.appendRow([
-    paymentId, data.ownerId, parseFloat(data.amount) || 0,
-    data.date || new Date().toISOString().split('T')[0],
-    data.method || 'cash', data.notes || '', new Date().toISOString()
-  ]);
+  const newPaymentData = {
+    id: paymentId,
+    ownerId: data.ownerId,
+    amount: parseFloat(data.amount) || 0,
+    date: data.date || new Date().toISOString().split('T')[0],
+    method: data.method || 'cash',
+    notes: data.notes || '',
+    createdAt: new Date().toISOString()
+  };
+  appendRowDynamically(paymentSheet, newPaymentData, 'PaymentEntries');
   
   // Update owner totals
   const ownerSheet = ss.getSheetByName('Owners');
   const ownerData = ownerSheet.getDataRange().getValues();
   const ownerHeaders = ownerData[0];
-  const totalPaidIdx = ownerHeaders.indexOf('totalPaid');
-  const lastPaymentIdx = ownerHeaders.indexOf('lastPaymentDate');
+  const totalPaidIdx = findColumnIndex(ownerHeaders, 'totalPaid');
+  const lastPaymentIdx = findColumnIndex(ownerHeaders, 'lastPaymentDate');
+  const ownerIdColIdx = findColumnIndex(ownerHeaders, 'id');
+  const checkIdx = ownerIdColIdx >= 0 ? ownerIdColIdx : 0;
   
   if (totalPaidIdx >= 0) {
     for (let i = 1; i < ownerData.length; i++) {
-      if (ownerData[i][0] === data.ownerId) {
+      if (String(ownerData[i][checkIdx]).trim() === String(data.ownerId).trim()) {
         const currentPaid = parseFloat(ownerData[i][totalPaidIdx]) || 0;
         ownerSheet.getRange(i + 1, totalPaidIdx + 1).setValue(currentPaid + (parseFloat(data.amount) || 0));
         if (lastPaymentIdx >= 0) {
@@ -487,28 +661,47 @@ function handleAddAlert(data, SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName('Alerts');
   
-  // Check duplicates
+  // Check duplicates dynamically
   const existingData = sheet.getDataRange().getValues();
+  const headers = existingData[0];
+  const timeIdx = findColumnIndex(headers, 'time');
+  const ownerIdIdx = findColumnIndex(headers, 'ownerId');
+  const typeIdx = findColumnIndex(headers, 'type');
+  const eventIdx = findColumnIndex(headers, 'event');
+  const idIdx = findColumnIndex(headers, 'id');
+  
   const now = new Date(data.time || Date.now());
   
-  for (let i = 1; i < existingData.length; i++) {
-    const existingTime = new Date(existingData[i][1]);
-    const existingOwner = existingData[i][5];
-    const existingType = existingData[i][4];
-    const existingEvent = existingData[i][2];
-    const timeDiff = Math.abs(now.getTime() - existingTime.getTime());
-    
-    if (existingOwner === data.ownerId && existingType === data.type && timeDiff < 300000 && existingEvent === data.event) {
-      return json({ success: true, id: existingData[i][0], duplicate: true });
+  if (timeIdx >= 0 && ownerIdIdx >= 0 && typeIdx >= 0 && eventIdx >= 0) {
+    for (let i = 1; i < existingData.length; i++) {
+      const existingTime = new Date(existingData[i][timeIdx]);
+      const existingOwner = String(existingData[i][ownerIdIdx]).trim();
+      const existingType = String(existingData[i][typeIdx]).trim();
+      const existingEvent = String(existingData[i][eventIdx]).trim();
+      const timeDiff = Math.abs(now.getTime() - existingTime.getTime());
+      
+      if (existingOwner === String(data.ownerId).trim() && existingType === String(data.type).trim() && timeDiff < 300000 && existingEvent === String(data.event).trim()) {
+        const dupId = idIdx >= 0 ? existingData[i][idIdx] : 'alert_dup';
+        return json({ success: true, id: dupId, duplicate: true });
+      }
     }
   }
   
   const alertId = data.id || 'alert_' + Date.now();
-  sheet.appendRow([
-    alertId, data.time || new Date().toISOString(),
-    data.event || 'Alert', data.user || '', data.type || 'info',
-    data.ownerId, false, '', '', '', data.severity || 'medium'
-  ]);
+  const newAlertData = {
+    id: alertId,
+    time: data.time || new Date().toISOString(),
+    event: data.event || 'Alert',
+    user: data.user || '',
+    type: data.type || 'info',
+    ownerId: data.ownerId || '',
+    resolved: false,
+    resolvedBy: '',
+    resolvedAt: '',
+    resolutionNote: '',
+    severity: data.severity || 'medium'
+  };
+  appendRowDynamically(sheet, newAlertData, 'Alerts');
   
   return json({ success: true, id: alertId });
 }
@@ -519,17 +712,22 @@ function handleResolveAlert(data, SHEET_ID) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   
-  const colMap = {};
-  headers.forEach((h, i) => colMap[h] = i);
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
   
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.alertId) {
+    if (String(values[i][checkIdx]) === String(data.alertId)) {
       const rowNum = i + 1;
       
-      if (colMap.resolved !== undefined) sheet.getRange(rowNum, colMap.resolved + 1).setValue(true);
-      if (colMap.resolvedBy !== undefined && data.resolvedBy) sheet.getRange(rowNum, colMap.resolvedBy + 1).setValue(data.resolvedBy);
-      if (colMap.resolvedAt !== undefined) sheet.getRange(rowNum, colMap.resolvedAt + 1).setValue(new Date().toISOString());
-      if (colMap.resolutionNote !== undefined && data.resolutionNote) sheet.getRange(rowNum, colMap.resolutionNote + 1).setValue(data.resolutionNote);
+      const resolvedIdx = findColumnIndex(headers, 'resolved');
+      const resolvedByIdx = findColumnIndex(headers, 'resolvedBy');
+      const resolvedAtIdx = findColumnIndex(headers, 'resolvedAt');
+      const resolutionNoteIdx = findColumnIndex(headers, 'resolutionNote');
+      
+      if (resolvedIdx >= 0) sheet.getRange(rowNum, resolvedIdx + 1).setValue(true);
+      if (resolvedByIdx >= 0 && data.resolvedBy) sheet.getRange(rowNum, resolvedByIdx + 1).setValue(data.resolvedBy);
+      if (resolvedAtIdx >= 0) sheet.getRange(rowNum, resolvedAtIdx + 1).setValue(new Date().toISOString());
+      if (resolutionNoteIdx >= 0 && data.resolutionNote) sheet.getRange(rowNum, resolutionNoteIdx + 1).setValue(data.resolutionNote);
       
       return json({ success: true, resolved: true });
     }
@@ -545,30 +743,26 @@ function handleUpdateFill(data, SHEET_ID) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   
-  const colMap = {};
-  headers.forEach((h, i) => colMap[h] = i);
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
   
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.fillId) {
+    if (String(values[i][checkIdx]) === String(data.fillId)) {
       const rowNum = i + 1;
       const updates = [];
       
-      if (data.verified !== undefined && colMap.verified !== undefined) {
-        sheet.getRange(rowNum, colMap.verified + 1).setValue(data.verified === true || data.verified === 'true');
-        updates.push('verified');
-      }
-      if (data.verifiedBy !== undefined && colMap.verifiedBy !== undefined) {
-        sheet.getRange(rowNum, colMap.verifiedBy + 1).setValue(data.verifiedBy);
-        updates.push('verifiedBy');
-      }
-      if (data.verifiedAt !== undefined && colMap.verifiedAt !== undefined) {
-        sheet.getRange(rowNum, colMap.verifiedAt + 1).setValue(data.verifiedAt || new Date().toISOString());
-        updates.push('verifiedAt');
-      }
-      if (data.adminNotes !== undefined && colMap.adminNotes !== undefined) {
-        sheet.getRange(rowNum, colMap.adminNotes + 1).setValue(data.adminNotes);
-        updates.push('adminNotes');
-      }
+      const fields = ['verified', 'verifiedBy', 'verifiedAt', 'adminNotes'];
+      fields.forEach(field => {
+        if (data[field] !== undefined) {
+          const colIdx = findColumnIndex(headers, field);
+          if (colIdx >= 0) {
+            let value = data[field];
+            if (field === 'verified') value = value === true || value === 'true';
+            sheet.getRange(rowNum, colIdx + 1).setValue(value);
+            updates.push(field);
+          }
+        }
+      });
       
       return json({ success: true, updated: updates });
     }
@@ -584,21 +778,24 @@ function handleUpdateVehicle(data, SHEET_ID) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   
-  const colMap = {};
-  headers.forEach((h, i) => colMap[h] = i);
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
   
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.vehicleId) {
+    if (String(values[i][checkIdx]) === String(data.vehicleId)) {
       const rowNum = i + 1;
       const updates = [];
       
       const fields = ['plate', 'model', 'initialOdo', 'currentOdo', 'capacity', 'status', 'ownerId'];
       fields.forEach(field => {
-        if (data[field] !== undefined && colMap[field] !== undefined) {
-          let value = data[field];
-          if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) value = parseInt(value) || 0;
-          sheet.getRange(rowNum, colMap[field] + 1).setValue(value);
-          updates.push(field);
+        if (data[field] !== undefined) {
+          const colIdx = findColumnIndex(headers, field);
+          if (colIdx >= 0) {
+            let value = data[field];
+            if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) value = parseInt(value) || 0;
+            sheet.getRange(rowNum, colIdx + 1).setValue(value);
+            updates.push(field);
+          }
         }
       });
       
@@ -614,28 +811,41 @@ function handleAddCreditAction(data, SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const actionSheet = ss.getSheetByName('CreditActions');
   
-  const actionId = 'ca_' + Date.now();
-  actionSheet.appendRow([
-    actionId, data.ownerId, data.type, parseFloat(data.amount) || 0,
-    data.reason || '', data.requestedBy || '', data.approvedBy || '',
-    data.status || 'pending', new Date().toISOString()
-  ]);
+  const actionId = data.id || 'ca_' + Date.now();
+  const newActionData = {
+    id: actionId,
+    ownerId: data.ownerId,
+    type: data.type,
+    amount: parseFloat(data.amount) || 0,
+    reason: data.reason || '',
+    requestedBy: data.requestedBy || '',
+    approvedBy: data.approvedBy || '',
+    status: data.status || 'pending',
+    createdAt: new Date().toISOString()
+  };
+  appendRowDynamically(actionSheet, newActionData, 'CreditActions');
   
   // Update owner credit based on action type ONLY if status is approved (or not pending)
   if (data.status !== 'pending' && (data.type === 'issue' || data.type === 'emergency' || data.type === 'bonus' || data.type === 'issued')) {
-    const ownerSheet = ss.getSheetByName('Owners');
-    const ownerData = ownerSheet.getDataRange().getValues();
-    const ownerHeaders = ownerData[0];
-    const creditLimitIdx = ownerHeaders.indexOf('creditLimit');
-    
-    if (creditLimitIdx >= 0) {
-      for (let i = 1; i < ownerData.length; i++) {
-        if (ownerData[i][0] === data.ownerId) {
-          const currentLimit = parseFloat(ownerData[i][creditLimitIdx]) || 0;
-          ownerSheet.getRange(i + 1, creditLimitIdx + 1).setValue(currentLimit + (parseFloat(data.amount) || 0));
-          break;
+    try {
+      const ownerSheet = ss.getSheetByName('Owners');
+      const ownerData = ownerSheet.getDataRange().getValues();
+      const ownerHeaders = ownerData[0];
+      const creditLimitIdx = findColumnIndex(ownerHeaders, 'creditLimit');
+      const ownerIdColIdx = findColumnIndex(ownerHeaders, 'id');
+      const checkIdx = ownerIdColIdx >= 0 ? ownerIdColIdx : 0;
+      
+      if (creditLimitIdx >= 0) {
+        for (let i = 1; i < ownerData.length; i++) {
+          if (String(ownerData[i][checkIdx]).trim() === String(data.ownerId).trim()) {
+            const currentLimit = parseFloat(ownerData[i][creditLimitIdx]) || 0;
+            ownerSheet.getRange(i + 1, creditLimitIdx + 1).setValue(currentLimit + (parseFloat(data.amount) || 0));
+            break;
+          }
         }
       }
+    } catch (e) {
+      Logger.log('Error updating owner credit limit in handleAddCreditAction: ' + e);
     }
   }
   
@@ -843,36 +1053,76 @@ function handleRegisterOwner(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Owners');
   // Generate ID if not provided
   const ownerId = data.id || 'own_' + Date.now();
-  sheet.appendRow([
-    ownerId, data.name, data.email, data.phone, data.business, data.password,
-    'active', new Date().toISOString(), 50000, 0, false, 0, '', ''
-  ]);
+  const newOwnerData = {
+    id: ownerId,
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    business: data.business,
+    password: data.password,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    creditLimit: data.creditLimit !== undefined ? data.creditLimit : 50000,
+    creditUsed: data.creditUsed !== undefined ? data.creditUsed : 0,
+    creditFrozen: data.creditFrozen !== undefined ? data.creditFrozen : false,
+    totalPaid: data.totalPaid !== undefined ? data.totalPaid : 0,
+    lastPaymentDate: '',
+    notes: ''
+  };
+  appendRowDynamically(sheet, newOwnerData, 'Owners');
   return json({ success: true, id: ownerId });
 }
 
 function handleAddDriver(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Drivers');
-  sheet.appendRow([data.id, data.name, data.code, data.assignedVehicleId || '', data.ownerId, 'active', new Date().toISOString()]);
+  const driverId = data.id || 'drv_' + Date.now();
+  const newDriverData = {
+    id: driverId,
+    name: data.name,
+    code: data.code,
+    assignedVehicleId: data.assignedVehicleId || '',
+    ownerId: data.ownerId,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
+  appendRowDynamically(sheet, newDriverData, 'Drivers');
   return json({ success: true });
 }
 
 function handleAddVehicle(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Vehicles');
-  sheet.appendRow([
-    data.id, data.plate, data.model,
-    parseInt(data.initialOdo) || 0, parseInt(data.currentOdo) || 0,
-    parseInt(data.capacity) || 60, data.ownerId, 'active'
-  ]);
+  const vehicleId = data.id || 'veh_' + Date.now();
+  const newVehicleData = {
+    id: vehicleId,
+    plate: data.plate,
+    model: data.model,
+    initialOdo: parseInt(data.initialOdo) || 0,
+    currentOdo: parseInt(data.currentOdo) || 0,
+    capacity: parseInt(data.capacity) || 60,
+    ownerId: data.ownerId,
+    status: 'active'
+  };
+  appendRowDynamically(sheet, newVehicleData, 'Vehicles');
   return json({ success: true });
 }
 
 function handleUpdateDriver(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Drivers');
   const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const codeIdx = findColumnIndex(headers, 'code');
+  const assignedVehicleIdIdx = findColumnIndex(headers, 'assignedVehicleId');
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
+  
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.id) {
-      if (data.code !== undefined) sheet.getRange(i + 1, 3).setValue(data.code);
-      if (data.assignedVehicleId !== undefined) sheet.getRange(i + 1, 4).setValue(data.assignedVehicleId || '');
+    if (String(values[i][checkIdx]) === String(data.id)) {
+      if (data.code !== undefined && codeIdx >= 0) {
+        sheet.getRange(i + 1, codeIdx + 1).setValue(data.code);
+      }
+      if (data.assignedVehicleId !== undefined && assignedVehicleIdIdx >= 0) {
+        sheet.getRange(i + 1, assignedVehicleIdIdx + 1).setValue(data.assignedVehicleId || '');
+      }
       break;
     }
   }
@@ -882,8 +1132,12 @@ function handleUpdateDriver(data, SHEET_ID) {
 function handleDeleteDriver(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Drivers');
   const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
+  
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.id) {
+    if (String(values[i][checkIdx]) === String(data.id)) {
       sheet.deleteRow(i + 1);
       break;
     }
@@ -894,8 +1148,12 @@ function handleDeleteDriver(data, SHEET_ID) {
 function handleDeleteVehicle(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Vehicles');
   const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idIdx = findColumnIndex(headers, 'id');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
+  
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.id) {
+    if (String(values[i][checkIdx]) === String(data.id)) {
       sheet.deleteRow(i + 1);
       break;
     }
