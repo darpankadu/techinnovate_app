@@ -28,8 +28,10 @@ function normalizeKeys(obj: any, expectedKeys: Record<string, string>): any {
     const normalized = key.toLowerCase().replace(/[\s_-]/g, '')
     const mapped = lowerMap[normalized]
     if (!mapped && normalized === '' && !emptyKeyMapped && 'id' in expectedKeys) {
-      result['id'] = obj[key]
-      emptyKeyMapped = true
+      if (obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '') {
+        result['id'] = obj[key]
+        emptyKeyMapped = true
+      }
     } else if (mapped) {
       // Smart owner ID & credit limit fallback to handle duplicate/shifted columns
       if (mapped === 'id' && 'creditLimit' in expectedKeys) {
@@ -41,7 +43,14 @@ function normalizeKeys(obj: any, expectedKeys: Record<string, string>): any {
           result['creditLimit'] = parseFloat(valStr) || 0
         }
       } else {
-        result[mapped] = obj[key]
+        if (mapped === 'id') {
+          const valStr = String(obj[key]).trim()
+          if (valStr !== '' && valStr !== '0' && valStr !== 'false' && valStr.toLowerCase() !== 'undefined' && valStr.toLowerCase() !== 'null') {
+            result['id'] = obj[key]
+          }
+        } else {
+          result[mapped] = obj[key]
+        }
       }
     } else {
       result[key] = obj[key]
