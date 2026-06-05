@@ -1315,6 +1315,15 @@ function testSetup() {
   Logger.log('DB Version: ' + props.getProperty('DB_VERSION'));
 }
 
+function testEmailPermission() {
+  try {
+    MailApp.sendEmail(Session.getActiveUser().getEmail(), "CNG Tracker Permission Test", "If you receive this, permissions are active!");
+    Logger.log("Test email sent successfully to: " + Session.getActiveUser().getEmail());
+  } catch (err) {
+    Logger.log("Error: " + err.toString());
+  }
+}
+
 function testAPI() {
   const testData = { action: 'getData' };
   const result = doPost({ postData: { contents: JSON.stringify(testData) } });
