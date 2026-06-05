@@ -1078,16 +1078,14 @@ function handleSendOTP(data) {
     MailApp.sendEmail({
       to: email,
       subject: 'CNG Fuel Tracker — Email Verification Code',
-      htmlBody: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px; margin: 0 auto; color: #1a202c;">
-          <h2 style="color: #3182ce; margin-bottom: 20px;">Email Verification</h2>
-          <p>Thank you for registering with CNG Fuel Tracker. Use the following One-Time Password (OTP) to complete your owner account creation:</p>
-          <div style="font-size: 28px; font-weight: bold; background-color: #f7fafc; padding: 15px; text-align: center; border-radius: 6px; letter-spacing: 4px; margin: 25px 0; border: 1px dashed #cbd5e0;">
-            \${otp}
-          </div>
-          <p style="font-size: 13px; color: #718096; margin-top: 25px;">This OTP is valid for 10 minutes. If you did not request this code, please ignore this email.</p>
-        </div>
-      `
+      htmlBody: '<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px; margin: 0 auto; color: #1a202c;">' +
+        '<h2 style="color: #3182ce; margin-bottom: 20px;">Email Verification</h2>' +
+        '<p>Thank you for registering with CNG Fuel Tracker. Use the following One-Time Password (OTP) to complete your owner account creation:</p>' +
+        '<div style="font-size: 28px; font-weight: bold; background-color: #f7fafc; padding: 15px; text-align: center; border-radius: 6px; letter-spacing: 4px; margin: 25px 0; border: 1px dashed #cbd5e0;">' +
+        otp +
+        '</div>' +
+        '<p style="font-size: 13px; color: #718096; margin-top: 25px;">This OTP is valid for 10 minutes. If you did not request this code, please ignore this email.</p>' +
+        '</div>'
     });
     return json({ success: true });
   } catch (err) {
