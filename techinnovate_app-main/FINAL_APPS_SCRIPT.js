@@ -417,6 +417,10 @@ function doPost(e) {
     if (action === 'getOwnerStats') return handleGetOwnerStats(data, SHEET_ID);
     if (action === 'getVehicleStats') return handleGetVehicleStats(data, SHEET_ID);
     
+    // OTP Verification
+    if (action === 'sendOTP') return handleSendOTP(data);
+    if (action === 'verifyOTP') return handleVerifyOTP(data);
+    
     // Existing CRUD
     if (action === 'registerOwner') return handleRegisterOwner(data, SHEET_ID);
     if (action === 'addDriver') return handleAddDriver(data, SHEET_ID);
@@ -1046,6 +1050,74 @@ function handleGetVehicleStats(data, SHEET_ID) {
       lastFill: vehicleFills.length > 0 ? vehicleFills[vehicleFills.length - 1].time : null
     }
   });
+}
+
+function handleSendOTP(data) {
+  const email = (data.email || '').trim();
+  if (email === '') {
+    return json({ success: false, error: 'Email address is required.' });
+  }
+  
+  // Rate limiting: allow only one OTP request every 60 seconds per email
+  const cache = CacheService.getScriptCache();
+  const cooldownKey = 'cooldown_' + email;
+  if (cache.get(cooldownKey)) {
+    return json({ success: false, error: 'Please wait before requesting another OTP.' });
+  }
+  
+  // Generate a 6-digit random number
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  
+  // Store the OTP in the cache (expires in 10 minutes)
+  cache.put(email, otp, 600);
+  
+  // Store a cooldown flag in the cache (expires in 60 seconds)
+  cache.put(cooldownKey, '1', 60);
+  
+  try {
+    MailApp.sendEmail({
+      to: email,
+      subject: 'CNG Fuel Tracker — Email Verification Code',
+      htmlBody: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px; margin: 0 auto; color: #1a202c;">
+          <h2 style="color: #3182ce; margin-bottom: 20px;">Email Verification</h2>
+          <p>Thank you for registering with CNG Fuel Tracker. Use the following One-Time Password (OTP) to complete your owner account creation:</p>
+          <div style="font-size: 28px; font-weight: bold; background-color: #f7fafc; padding: 15px; text-align: center; border-radius: 6px; letter-spacing: 4px; margin: 25px 0; border: 1px dashed #cbd5e0;">
+            \${otp}
+          </div>
+          <p style="font-size: 13px; color: #718096; margin-top: 25px;">This OTP is valid for 10 minutes. If you did not request this code, please ignore this email.</p>
+        </div>
+      `
+    });
+    return json({ success: true });
+  } catch (err) {
+    Logger.log('Error sending email: ' + err);
+    return json({ success: false, error: 'Failed to send verification email. Details: ' + err.toString() });
+  }
+}
+
+function handleVerifyOTP(data) {
+  const email = (data.email || '').trim();
+  const userOtp = (data.otp || '').trim();
+  
+  if (email === '' || userOtp === '') {
+    return json({ success: false, error: 'Email and OTP code are required.' });
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const cachedOtp = cache.get(email);
+  
+  if (!cachedOtp) {
+    return json({ success: false, error: 'OTP has expired or is invalid. Please request a new one.' });
+  }
+  
+  if (cachedOtp === userOtp) {
+    // Clear the OTP from cache after successful verification
+    cache.remove(email);
+    return json({ success: true });
+  } else {
+    return json({ success: false, error: 'Invalid verification code. Please try again.' });
+  }
 }
 
 // ============= EXISTING CRUD =============

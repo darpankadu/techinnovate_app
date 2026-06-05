@@ -20,6 +20,9 @@ export function OwnerRegister({ lang, setView, setSession }: {
     password: '',
     confirmPassword: ''
   })
+  const [otp, setOtp] = useState('')
+  const [resendTimer, setResendTimer] = useState(0)
+  const [otpLoading, setOtpLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
@@ -33,7 +36,7 @@ export function OwnerRegister({ lang, setView, setSession }: {
     return Object.keys(newErrors).length === 0
   }
 
-  const validateStep2 = () => {
+  const validateStep3 = () => {
     const newErrors: Record<string, string> = {}
     if (form.password.length < 6) newErrors.password = 'Minimum 6 characters'
     if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords must match'
@@ -41,12 +44,66 @@ export function OwnerRegister({ lang, setView, setSession }: {
     return Object.keys(newErrors).length === 0
   }
 
+  const startResendTimer = () => {
+    setResendTimer(60)
+    const interval = setInterval(() => {
+      setResendTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const handleSendOTP = async () => {
+    setOtpLoading(true)
+    setErrors({})
+    try {
+      const res = await googleSync.sendOTP(form.email)
+      if (res.success) {
+        startResendTimer()
+        setStep(2)
+      } else {
+        setErrors({ email: res.error || 'Failed to send OTP. Please check email address.' })
+      }
+    } catch (err: any) {
+      setErrors({ email: 'Failed to send OTP: ' + err.toString() })
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleVerifyOTP = async () => {
+    if (!otp.trim() || otp.trim().length !== 6) {
+      setErrors({ otp: 'Please enter a valid 6-digit OTP code' })
+      return
+    }
+    setOtpLoading(true)
+    setErrors({})
+    try {
+      const res = await googleSync.verifyOTP(form.email, otp)
+      if (res.success) {
+        setStep(3)
+      } else {
+        setErrors({ otp: res.error || 'Invalid or expired code. Please try again.' })
+      }
+    } catch (err: any) {
+      setErrors({ otp: 'Verification failed: ' + err.toString() })
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
   const handleNext = () => {
-    if (step === 1 && validateStep1()) setStep(2)
+    if (step === 1 && validateStep1()) {
+      handleSendOTP()
+    }
   }
 
   const handleRegister = async () => {
-    if (!validateStep2()) return
+    if (!validateStep3()) return
     
     setLoading(true)
     try {
@@ -54,6 +111,7 @@ export function OwnerRegister({ lang, setView, setSession }: {
       
       if (owners.find(o => o.email === form.email)) {
         setErrors({ email: 'Email already registered' })
+        setStep(1)
         return
       }
 
@@ -118,7 +176,7 @@ export function OwnerRegister({ lang, setView, setSession }: {
 
         {/* Progress */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          {[1, 2].map(i => (
+          {[1, 2, 3].map(i => (
             <div key={i} className="flex items-center gap-3">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                 i < step ? 'bg-green-500 text-white' : 
@@ -127,14 +185,14 @@ export function OwnerRegister({ lang, setView, setSession }: {
               }`}>
                 {i < step ? <CheckCircle2 className="w-4 h-4" /> : i}
               </div>
-              {i < 2 && <div className={`w-12 h-0.5 ${i < step ? 'bg-green-500' : 'bg-slate-200'}`} />}
+              {i < 3 && <div className={`w-12 h-0.5 ${i < step ? 'bg-green-500' : 'bg-slate-200'}`} />}
             </div>
           ))}
         </div>
 
         {/* Form Card */}
         <div className="bg-white rounded-[24px] shadow-xl shadow-slate-200/50 border border-slate-200/50 p-8">
-          {step === 1 ? (
+          {step === 1 && (
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
               <div>
                 <label className="text-[13px] font-medium text-slate-700 mb-1.5 block">Full Name</label>
@@ -203,12 +261,92 @@ export function OwnerRegister({ lang, setView, setSession }: {
 
               <button
                 onClick={handleNext}
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl mt-2 transition-colors"
+                disabled={otpLoading}
+                className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl mt-2 transition-colors flex items-center justify-center gap-2"
               >
-                Continue
+                {otpLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Sending Code...
+                  </>
+                ) : (
+                  'Continue'
+                )}
               </button>
             </motion.div>
-          ) : (
+          )}
+
+          {step === 2 && (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+              <div className="text-center pb-2">
+                <p className="text-sm text-slate-600">
+                  We sent a 6-digit verification code to
+                  <br />
+                  <span className="font-semibold text-slate-800">{form.email}</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="text-[13px] font-medium text-slate-700 mb-1.5 block">Verification Code</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={otp}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter OTP"
+                    className={`w-full h-11 pl-10 pr-3 bg-slate-50 border rounded-xl text-[15px] outline-none transition-all tracking-[0.2em] font-mono text-center ${
+                      errors.otp ? 'border-red-300 focus:border-red-500 bg-red-50/50' : 'border-slate-200 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10'
+                    }`}
+                  />
+                </div>
+                {errors.otp && <p className="text-red-600 text-xs mt-1.5 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.otp}</p>}
+              </div>
+
+              <div className="text-center">
+                {resendTimer > 0 ? (
+                  <p className="text-xs text-slate-500 font-medium">
+                    Resend code in {resendTimer}s
+                  </p>
+                ) : (
+                  <button
+                    onClick={handleSendOTP}
+                    disabled={otpLoading}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold disabled:opacity-50"
+                  >
+                    Resend Code
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setStep(1)}
+                  className="flex-1 h-11 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleVerifyOTP}
+                  disabled={otpLoading}
+                  className="flex-1 h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {otpLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify Code'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 3 && (
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
               <div className="text-center pb-2">
                 <p className="text-sm text-slate-600">Almost done! Secure your account</p>
@@ -250,7 +388,7 @@ export function OwnerRegister({ lang, setView, setSession }: {
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(2)}
                   className="flex-1 h-11 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-colors"
                 >
                   Back

@@ -173,6 +173,40 @@ export const googleSync = {
     }
   },
   
+  async sendOTP(email: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.enabled) return { success: true }
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'follow',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action: 'sendOTP', email }),
+      })
+      const result = await response.json()
+      return { success: result.success === true, error: result.error }
+    } catch (err: any) {
+      return { success: false, error: err.toString() }
+    }
+  },
+
+  async verifyOTP(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.enabled) return { success: true }
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'follow',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action: 'verifyOTP', email, otp }),
+      })
+      const result = await response.json()
+      return { success: result.success === true, error: result.error }
+    } catch (err: any) {
+      return { success: false, error: err.toString() }
+    }
+  },
+
   async registerOwner(owner: any): Promise<boolean> {
     if (!this.enabled) return true
     try {
