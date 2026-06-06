@@ -74,3 +74,136 @@ This report summarizes the major bugs identified in the **TechInnovate CNG Fleet
 - [x] **Remote Repository**: All modifications committed and pushed to `main` on GitHub.
 - [x] **CORS Resolution**: Media verification links open in new tabs correctly.
 - [x] **Data Merge**: Offline logs survive reload and sync when connection is active.
+
+---
+
+## 📁 Appendix: Raw Git Commit Logs
+
+Below is the official git history log for the recent commits addressing these bugs:
+
+```text
+commit dd6305ae8ec84f1602d08f8b866f85ee76306f50
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 13:10:14 2026 +0530
+
+    Add_bug_fix_history_report
+
+ BUG_FIX_HISTORY_REPORT.md | 76 +++++++++++++++++++++++++
+ 1 file changed, 76 insertions(+)
+
+commit fd67cf392abcfdabad1598bbdb3311d1d0ca59de
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 13:06:22 2026 +0530
+
+    Open_media_links_in_new_tab_to_bypass_CORS
+
+ src/App.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+commit 02ee0a14de20008ae596e10a3f585d40aefa4a3d
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 13:04:05 2026 +0530
+
+    Enable_owner_media_lightbox_click
+
+ src/App.tsx | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+commit 0b63901395181ad43a30c6b6ead2de6449175713
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 13:02:40 2026 +0530
+
+    Fix_owner_media_tab
+
+ src/App.tsx | 31 +++++++++++++------------------
+ 1 file changed, 13 insertions(+), 18 deletions(-)
+
+commit 6f25eee891e0df8cf838c7b1dedbfc7f60390ed0
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 12:57:22 2026 +0530
+
+    Fix case-insensitive and space-insensitive column header matching for URLs in getFillsData
+
+ APPS_SCRIPT_COMPLETE_ALL_PHASES.js | 7 ++++---
+ FINAL_APPS_SCRIPT.js               | 7 ++++---
+ 2 files changed, 8 insertions(+), 6 deletions(-)
+
+commit 05152c372c0b431d1263ff0ef3216c6f3c95d36f
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 12:33:20 2026 +0530
+
+    Update Apps Script getFillsData to support extracting URLs from hyperlink formulas dynamically
+
+ APPS_SCRIPT_COMPLETE_ALL_PHASES.js | 58 ++++++++++++++++------
+ FINAL_APPS_SCRIPT.js               | 56 +++++++++++++++------
+ 2 files changed, 84 insertions(+), 30 deletions(-)
+
+commit e34bd60aca552ab5effa25d3173699506ba114d8
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 12:30:33 2026 +0530
+
+    Format videoUrl as hyperlink formula in new fills Google Sheets entries
+
+ APPS_SCRIPT_COMPLETE.js            | 3 ++-
+ APPS_SCRIPT_COMPLETE_ALL_PHASES.js | 3 ++-
+ FINAL_APPS_SCRIPT.js               | 4 ++++
+ 3 files changed, 8 insertions(+), 2 deletions(-)
+
+commit f83bf460cdb55fb8bbd8df9cf3a16933418a1419
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Sat Jun 6 11:54:19 2026 +0530
+
+    Fix driver fills synchronization, offline queueing, and vehicle odometer matching
+
+ APPS_SCRIPT_COMPLETE_ALL_PHASES.js | 57 ++++++++++++-
+ FINAL_APPS_SCRIPT.js               | 33 +++++++-
+ src/App.tsx                        | 94 +++++++++++++---------
+ 3 files changed, 138 insertions(+), 46 deletions(-)
+
+commit cf4f92f9f8556b8939e207fe2d71016dc1600629
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Fri Jun 5 15:23:16 2026 +0530
+
+    Fix: correct OTP variable interpolation in email body in FINAL_APPS_SCRIPT.js
+
+ FINAL_APPS_SCRIPT.js | 18 ++++++++----------
+ 1 file changed, 8 insertions(+), 10 deletions(-)
+
+commit abc0a970486ac5dc0f0fb95f3d8952df4addd4a4
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Fri Jun 5 15:15:52 2026 +0530
+
+    Feat: add testEmailPermission helper to force trigger Google authorization
+
+ FINAL_APPS_SCRIPT.js | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+commit 2364ae94696cebdeb2f3dd9e2788ef12aa8319ff
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Fri Jun 5 15:04:17 2026 +0530
+
+    Feat: implement free email verification OTP for Owner Registration
+
+ FINAL_APPS_SCRIPT.js         |  72 ++++++++++
+ src/components/OwnerRegister.tsx  | 158 +++++++++++++++++++--
+ src/lib/googleSync.ts        |  34 +++++
+ 3 files changed, 254 insertions(+), 10 deletions(-)
+
+commit 85d5e7cca7e077a58e87688db90a96d06d929038
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Fri Jun 5 10:30:49 2026 +0530
+
+    Fix: prevent empty ID column from overwriting valid driver and vehicle IDs
+
+ src/App.tsx | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+commit 308e468445d148bed2c438283436bc8797963b8e
+Author: TechInnovate <developer@techinnovate.com>
+Date:   Fri Jun 5 10:21:06 2026 +0530
+
+    Fix: backend owner registration alignment and credit limit offset in spreadsheet
+
+ FINAL_APPS_SCRIPT.js | 514 ++++++++++++++++++++++-------
+ 1 file changed, 386 insertions(+), 128 deletions(-)
+```
