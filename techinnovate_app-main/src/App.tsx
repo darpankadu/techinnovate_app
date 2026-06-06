@@ -2457,7 +2457,7 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
                           <div
                             key={i}
                             className={`block aspect-video rounded-lg border bg-[#F5F6F8] border-[#E2E6EB] overflow-hidden relative ${m.url ? 'cursor-pointer hover:border-[#E10600] transition-colors' : ''}`}
-                            onClick={() => m.url && setLightboxMedia({ url: m.url, label: m.label })}
+                            onClick={() => m.url && window.open(m.url, '_blank')}
                           >
                             <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                               <Camera className="w-5 h-5 text-[#D1D5DB]" />
