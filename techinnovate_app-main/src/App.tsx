@@ -133,8 +133,11 @@ export default function App() {
               pendingVehicleApproval: nf.pendingVehicleApproval === true || nf.pendingVehicleApproval === 'true' || nf.pendingVehicleApproval === 'TRUE',
             }
           })
-          // Replace all fills with sheet data (clean slate)
-          storage.saveFills(cleanFills)
+          // Merge fills from sheet (prevent overwriting local-only unsynced/offline fills)
+          const localFills = storage.getFills()
+          const backendIds = new Set(cleanFills.map((f: any) => f.id))
+          const unsyncedFills = localFills.filter((f: any) => !backendIds.has(f.id))
+          storage.saveFills([...cleanFills, ...unsyncedFills])
         }
         // Replace owners from sheet (complete replacement)
         if (data.owners?.length > 0) {
@@ -1181,44 +1184,57 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
         const allFills = storage.getFills().map(f => f.id === fillId ? updatedFill : f)
         storage.saveFills(allFills)
 
-        // Sheet sync — ONLY sync if NOT pending approval
-        if (!pendingApproval) {
-          const sheetPayload = {
-            action: 'addFill',
-            id: updatedFill.id,
-            vehicleId: vehicle.plate,
-            driverId: updatedFill.driverId,
-            time: updatedFill.time,
-            station: updatedFill.station,
-            kgs: updatedFill.kgs,
-            rate: updatedFill.rate,
-            total: updatedFill.total,
-            videoUrl: updatedFill.videoUrl,
-            pumpPhotoUrl: updatedFill.pumpPhotoUrl,
-            receiptPhotoUrl: updatedFill.receiptPhotoUrl,
-            odoPhotoUrl: updatedFill.odoPhotoUrl,
-            pumpGPS: updatedFill.pumpGPS ? `${updatedFill.pumpGPS.lat},${updatedFill.pumpGPS.lng}` : '',
-            receiptGPS: updatedFill.receiptGPS ? `${updatedFill.receiptGPS.lat},${updatedFill.receiptGPS.lng}` : '',
-            odoGPS: updatedFill.odoGPS ? `${updatedFill.odoGPS.lat},${updatedFill.odoGPS.lng}` : '',
-            odoReading: updatedFill.odoReading,
-            distanceDiff: updatedFill.distanceDiff,
-            mismatch: updatedFill.mismatch,
-            fuelDropPercent: updatedFill.fuelDropPercent,
-            ownerId: updatedFill.ownerId,
-            verified: updatedFill.verified,
-            pendingVehicleApproval: false,
-          }
-          console.log('[SheetSync] SYNCING to sheets (approved):', sheetPayload.vehicleId)
-          fetch(APPS_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'cors',
-            redirect: 'follow',
-            headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            body: JSON.stringify(sheetPayload),
-          }).then(r => r.text()).then(t => console.log('[SheetSync] response:', t.substring(0,100))).catch(e => console.error('[SheetSync] error:', e))
-        } else {
-          console.log('[SheetSync] BLOCKED - fill pending approval. NOT sending to sheets. Vehicle:', vehicle.plate)
+        // Sheet sync — Always sync, including vehicle-override fills (pending approval)
+        const sheetPayload = {
+          action: 'addFill',
+          id: updatedFill.id,
+          vehicleId: vehicle.plate,
+          driverId: updatedFill.driverId,
+          time: updatedFill.time,
+          station: updatedFill.station,
+          kgs: updatedFill.kgs,
+          rate: updatedFill.rate,
+          total: updatedFill.total,
+          videoUrl: updatedFill.videoUrl,
+          pumpPhotoUrl: updatedFill.pumpPhotoUrl,
+          receiptPhotoUrl: updatedFill.receiptPhotoUrl,
+          odoPhotoUrl: updatedFill.odoPhotoUrl,
+          pumpGPS: updatedFill.pumpGPS ? `${updatedFill.pumpGPS.lat},${updatedFill.pumpGPS.lng}` : '',
+          receiptGPS: updatedFill.receiptGPS ? `${updatedFill.receiptGPS.lat},${updatedFill.receiptGPS.lng}` : '',
+          odoGPS: updatedFill.odoGPS ? `${updatedFill.odoGPS.lat},${updatedFill.odoGPS.lng}` : '',
+          odoReading: updatedFill.odoReading,
+          distanceDiff: updatedFill.distanceDiff,
+          mismatch: updatedFill.mismatch,
+          fuelDropPercent: updatedFill.fuelDropPercent,
+          ownerId: updatedFill.ownerId,
+          verified: updatedFill.verified,
+          pendingVehicleApproval: pendingApproval,
         }
+        console.log('[SheetSync] SYNCING to sheets:', sheetPayload.vehicleId, 'pendingApproval:', pendingApproval)
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'cors',
+          redirect: 'follow',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify(sheetPayload),
+        })
+        .then(async (r) => {
+          const t = await r.text()
+          console.log('[SheetSync] response:', t.substring(0, 100))
+          try {
+            const res = JSON.parse(t)
+            if (!res.success) {
+              console.warn('[SheetSync] Backend reported failure, adding to offline queue:', res.error)
+              storage.addToOfflineQueue(updatedFill)
+            }
+          } catch (e) {
+            console.error('[SheetSync] Failed to parse backend response')
+          }
+        })
+        .catch(e => {
+          console.error('[SheetSync] Network/CORS error, queueing offline:', e)
+          storage.addToOfflineQueue(updatedFill)
+        })
 
         // Alerts — always created regardless of upload/sync outcome
         const alertsList = storage.getAlerts()

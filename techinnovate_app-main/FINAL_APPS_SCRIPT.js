@@ -408,6 +408,13 @@ function doPost(e) {
     
     // Phase 4: Vehicle Updates
     if (action === 'updateVehicle') return handleUpdateVehicle(data, SHEET_ID);
+    if (action === 'updateVehicleOdometer') {
+      const updateData = {
+        vehicleId: data.vehicleId,
+        currentOdo: data.odometer
+      };
+      return handleUpdateVehicle(updateData, SHEET_ID);
+    }
     
     // Phase 5: Credit Actions
     if (action === 'addCreditAction') return handleAddCreditAction(data, SHEET_ID);
@@ -496,12 +503,21 @@ function handleAddFill(data, SHEET_ID) {
     const vHeaders = vData[0];
     const currentOdoIdx = findColumnIndex(vHeaders, 'currentOdo');
     const vIdIdx = findColumnIndex(vHeaders, 'id');
+    const plateIdx = findColumnIndex(vHeaders, 'plate');
     const checkIdx = vIdIdx >= 0 ? vIdIdx : 0;
     
     if (currentOdoIdx >= 0) {
       for (let i = 1; i < vData.length; i++) {
-        if (String(vData[i][checkIdx]) === String(data.vehicleId)) {
-          vSheet.getRange(i + 1, currentOdoIdx + 1).setValue(parseInt(data.odoReading) || 0);
+        const rowId = String(vData[i][checkIdx]);
+        const rowPlate = plateIdx >= 0 ? String(vData[i][plateIdx]) : '';
+        const targetId = String(data.vehicleId);
+        
+        if (rowId === targetId || (rowPlate !== '' && rowPlate === targetId)) {
+          const currentOdoVal = parseInt(vData[i][currentOdoIdx]) || 0;
+          const newOdoVal = parseInt(data.odoReading) || 0;
+          if (newOdoVal >= currentOdoVal) {
+            vSheet.getRange(i + 1, currentOdoIdx + 1).setValue(newOdoVal);
+          }
           break;
         }
       }
@@ -783,10 +799,15 @@ function handleUpdateVehicle(data, SHEET_ID) {
   const headers = values[0];
   
   const idIdx = findColumnIndex(headers, 'id');
+  const plateIdx = findColumnIndex(headers, 'plate');
   const checkIdx = idIdx >= 0 ? idIdx : 0;
   
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][checkIdx]) === String(data.vehicleId)) {
+    const rowId = String(values[i][checkIdx]);
+    const rowPlate = plateIdx >= 0 ? String(values[i][plateIdx]) : '';
+    const targetId = String(data.vehicleId);
+    
+    if (rowId === targetId || (rowPlate !== '' && rowPlate === targetId)) {
       const rowNum = i + 1;
       const updates = [];
       
@@ -797,6 +818,12 @@ function handleUpdateVehicle(data, SHEET_ID) {
           if (colIdx >= 0) {
             let value = data[field];
             if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) value = parseInt(value) || 0;
+            
+            if (field === 'currentOdo') {
+              const currentOdoVal = parseInt(values[i][colIdx]) || 0;
+              if (value < currentOdoVal) return;
+            }
+            
             sheet.getRange(rowNum, colIdx + 1).setValue(value);
             updates.push(field);
           }

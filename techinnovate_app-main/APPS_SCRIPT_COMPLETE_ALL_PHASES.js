@@ -265,6 +265,13 @@ function doPost(e) {
     
     // Phase 4: Vehicle Updates
     if (action === 'updateVehicle') return handleUpdateVehicle(data, SHEET_ID);
+    if (action === 'updateVehicleOdometer') {
+      const updateData = {
+        vehicleId: data.vehicleId,
+        currentOdo: data.odometer
+      };
+      return handleUpdateVehicle(updateData, SHEET_ID);
+    }
     
     // Phase 5: Credit Actions
     if (action === 'addCreditAction') return handleAddCreditAction(data, SHEET_ID);
@@ -355,13 +362,30 @@ function handleAddFill(data, SHEET_ID) {
   try {
     const vSheet = ss.getSheetByName('Vehicles');
     const vData = vSheet.getDataRange().getValues();
+    const vHeaders = vData[0];
+    const currentOdoIdx = findColumnIndex(vHeaders, 'currentOdo');
+    const vIdIdx = findColumnIndex(vHeaders, 'id');
+    const plateIdx = findColumnIndex(vHeaders, 'plate');
+    const checkIdx = vIdIdx >= 0 ? vIdIdx : 0;
+    const odoCol = currentOdoIdx >= 0 ? currentOdoIdx : 4;
+    
     for (let i = 1; i < vData.length; i++) {
-      if (vData[i][0] === data.vehicleId) {
-        vSheet.getRange(i + 1, 5).setValue(parseInt(data.odoReading) || 0);
+      const rowId = String(vData[i][checkIdx]);
+      const rowPlate = plateIdx >= 0 ? String(vData[i][plateIdx]) : (vData[i][1] ? String(vData[i][1]) : '');
+      const targetId = String(data.vehicleId);
+      
+      if (rowId === targetId || (rowPlate !== '' && rowPlate === targetId)) {
+        const currentOdoVal = parseInt(vData[i][odoCol]) || 0;
+        const newOdoVal = parseInt(data.odoReading) || 0;
+        if (newOdoVal >= currentOdoVal) {
+          vSheet.getRange(i + 1, odoCol + 1).setValue(newOdoVal);
+        }
         break;
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    Logger.log('Error updating vehicle odometer: ' + err);
+  }
   
   // Add alert if needed
   if (data.mismatch || parseFloat(data.fuelDropPercent) > 20) {
@@ -587,8 +611,16 @@ function handleUpdateVehicle(data, SHEET_ID) {
   const colMap = {};
   headers.forEach((h, i) => colMap[h] = i);
   
+  const idIdx = findColumnIndex(headers, 'id');
+  const plateIdx = findColumnIndex(headers, 'plate');
+  const checkIdx = idIdx >= 0 ? idIdx : 0;
+  
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === data.vehicleId) {
+    const rowId = String(values[i][checkIdx]);
+    const rowPlate = plateIdx >= 0 ? String(values[i][plateIdx]) : (values[i][1] ? String(values[i][1]) : '');
+    const targetId = String(data.vehicleId);
+    
+    if (rowId === targetId || (rowPlate !== '' && rowPlate === targetId)) {
       const rowNum = i + 1;
       const updates = [];
       
@@ -597,6 +629,12 @@ function handleUpdateVehicle(data, SHEET_ID) {
         if (data[field] !== undefined && colMap[field] !== undefined) {
           let value = data[field];
           if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) value = parseInt(value) || 0;
+          
+          if (field === 'currentOdo') {
+            const currentOdoVal = parseInt(values[i][colMap[field]]) || 0;
+            if (value < currentOdoVal) return;
+          }
+          
           sheet.getRange(rowNum, colMap[field] + 1).setValue(value);
           updates.push(field);
         }
@@ -1076,4 +1114,15 @@ function fixAllEmptyIds() {
   }
   
   return 'Fixed ' + totalFixed + ' records with empty IDs';
+}
+
+function findColumnIndex(headers, columnName) {
+  const cleanTarget = String(columnName).toLowerCase().replace(/[\s_-]/g, '');
+  for (let i = 0; i < headers.length; i++) {
+    const cleanHeader = String(headers[i]).toLowerCase().replace(/[\s_-]/g, '');
+    if (cleanHeader === cleanTarget) {
+      return i;
+    }
+  }
+  return -1;
 }
