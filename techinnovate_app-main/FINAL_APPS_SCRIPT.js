@@ -329,6 +329,10 @@ function appendRowDynamically(sheet, data, sheetConfigName) {
       }
     }
     
+    if (cleanHeader === 'videourl' && typeof val === 'string' && val.startsWith('http') && !val.startsWith('=')) {
+      val = '=HYPERLINK("' + val + '", "Video")';
+    }
+    
     rowData[i] = val;
   });
   

@@ -419,7 +419,8 @@ function handleAddFill(data, SHEET_ID) {
   sheet.appendRow([
     data.id, data.vehicleId, data.driverId, data.time, data.station,
     parseFloat(data.kgs) || 0, parseFloat(data.rate) || 0, parseFloat(data.total) || 0,
-    data.videoUrl || '', data.pumpPhotoUrl || '', data.receiptPhotoUrl || '', data.odoPhotoUrl || '',
+    (data.videoUrl && data.videoUrl.startsWith('http') ? '=HYPERLINK("' + data.videoUrl + '", "Video")' : (data.videoUrl || '')),
+    data.pumpPhotoUrl || '', data.receiptPhotoUrl || '', data.odoPhotoUrl || '',
     data.pumpGPS || '', data.receiptGPS || '', data.odoGPS || '',
     parseInt(data.odoReading) || 0, parseFloat(data.distanceDiff) || 0,
     data.mismatch === true || data.mismatch === 'true', parseFloat(data.fuelDropPercent) || 0,
