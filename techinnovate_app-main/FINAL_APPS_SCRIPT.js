@@ -1297,13 +1297,14 @@ function handleGetData(SHEET_ID) {
     const formulas = sheet.getDataRange().getFormulas();
     const headers = values[0];
     
-    // Column indices that might contain URLs
-    const urlColumns = ['videoUrl', 'pumpPhotoUrl', 'receiptPhotoUrl', 'odoPhotoUrl'];
+    // Column indices that might contain URLs (cleaned lowercase)
+    const cleanUrlColumns = ['videourl', 'pumpphotourl', 'receiptphotourl', 'odophotourl'];
     
     return values.slice(1).map((row, rowIndex) => {
       const obj = {};
       headers.forEach((h, i) => {
-        if (urlColumns.includes(h)) {
+        const cleanH = String(h).trim().toLowerCase().replace(/[\s_-]/g, '');
+        if (cleanUrlColumns.includes(cleanH)) {
           let url = '';
           // 1. Try extracting from formula first
           const formula = formulas[rowIndex + 1] ? formulas[rowIndex + 1][i] : '';
