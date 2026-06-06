@@ -2456,26 +2456,21 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
                         {mediaItems.map((m, i) => (
                           <div
                             key={i}
-                            className={`block aspect-video rounded-lg border overflow-hidden relative cursor-pointer ${m.url ? 'bg-[#1F2937] border-[#374151]' : 'bg-[#F5F6F8] border-[#E2E6EB]'}`}
-                            onClick={() => m.url && setLightboxMedia({ url: m.url, label: m.label })}
+                            className="block aspect-video rounded-lg border bg-[#F5F6F8] border-[#E2E6EB] overflow-hidden relative"
                           >
-                            {m.url ? (
-                              m.isVideo ? (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
-                                    <Play className="w-7 h-7 text-white ml-0.5" />
-                                  </div>
-                                  <span className="absolute bottom-1 left-1 text-[10px] text-white/70 bg-black/50 px-1.5 rounded">Video</span>
-                                </div>
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                              <Camera className="w-5 h-5 text-[#D1D5DB]" />
+                              <span className="text-[10px] text-[#4B5563] font-medium">{m.label}</span>
+                              {m.url ? (
+                                <span className="text-[9px] text-[#10B981] bg-[#D1FAE5] px-2 py-0.5 rounded-full mt-1 font-medium">
+                                  Captured
+                                </span>
                               ) : (
-                                <img src={m.url} alt={m.label} className="w-full h-full object-cover" />
-                              )
-                            ) : (
-                              <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-                                <Camera className="w-5 h-5 text-[#D1D5DB]" />
-                                <span className="text-[10px] text-[#D1D5DB]">{m.label}</span>
-                              </div>
-                            )}
+                                <span className="text-[9px] text-[#9CA3AF] bg-[#F3F4F6] px-2 py-0.5 rounded-full mt-1 font-medium">
+                                  Not Captured
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
