@@ -1273,16 +1273,7 @@ function handleGetData(SHEET_ID) {
     return val;
   };
   
-  // Helper to extract URL from hyperlink or return plain value
-  const extractUrlFromHyperlink = (richTextValue) => {
-    if (!richTextValue) return '';
-    const runs = richTextValue.getRuns();
-    for (let i = 0; i < runs.length; i++) {
-      const linkUrl = runs[i].getLinkUrl();
-      if (linkUrl) return linkUrl;
-    }
-    return richTextValue.getText() || '';
-  };
+
   
   const getSheetData = (name) => {
     const sheet = ss.getSheetByName(name);
@@ -1298,12 +1289,12 @@ function handleGetData(SHEET_ID) {
     });
   };
   
-  // Special handler for Fills sheet to extract URLs from hyperlinks
   const getFillsData = () => {
     const sheet = ss.getSheetByName('Fills');
     if (!sheet) return [];
     const values = sheet.getDataRange().getValues();
     const richTextValues = sheet.getDataRange().getRichTextValues();
+    const formulas = sheet.getDataRange().getFormulas();
     const headers = values[0];
     
     // Column indices that might contain URLs
@@ -1312,10 +1303,47 @@ function handleGetData(SHEET_ID) {
     return values.slice(1).map((row, rowIndex) => {
       const obj = {};
       headers.forEach((h, i) => {
-        // For URL columns, try to extract URL from hyperlink
         if (urlColumns.includes(h)) {
-          const richText = richTextValues[rowIndex + 1][i]; // +1 because we skipped header
-          obj[h] = extractUrlFromHyperlink(richText);
+          let url = '';
+          // 1. Try extracting from formula first
+          const formula = formulas[rowIndex + 1] ? formulas[rowIndex + 1][i] : '';
+          if (formula && formula.toUpperCase().indexOf('=HYPERLINK') >= 0) {
+            const match = formula.match(/=HYPERLINK\(\s*"(.*?)"/i);
+            if (match && match[1]) {
+              url = match[1];
+            }
+          }
+          
+          // 2. Try extracting from rich text
+          if (!url) {
+            const richText = richTextValues[rowIndex + 1] ? richTextValues[rowIndex + 1][i] : null;
+            if (richText) {
+              const runs = richText.getRuns();
+              for (let r = 0; r < runs.length; r++) {
+                const linkUrl = runs[r].getLinkUrl();
+                if (linkUrl) {
+                  url = linkUrl;
+                  break;
+                }
+              }
+              if (!url) {
+                const textVal = richText.getText();
+                if (textVal && textVal.startsWith('http')) {
+                  url = textVal;
+                }
+              }
+            }
+          }
+          
+          // 3. Fallback to raw cell value
+          if (!url) {
+            const rawVal = row[i];
+            if (typeof rawVal === 'string' && rawVal.startsWith('http')) {
+              url = rawVal;
+            }
+          }
+          
+          obj[h] = url;
         } else {
           obj[h] = parseValue(row[i]);
         }
