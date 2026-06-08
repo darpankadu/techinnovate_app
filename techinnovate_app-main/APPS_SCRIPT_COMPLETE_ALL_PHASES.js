@@ -267,6 +267,51 @@ function repairMissingHeaders(ss) {
   }
 }
 
+function repairOwnersSheetData(ss) {
+  const sheet = ss.getSheetByName('Owners');
+  if (!sheet) return;
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+  
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  
+  const idIdx = findColumnIndex(headers, 'id');
+  const creditLimitIdx = findColumnIndex(headers, 'creditLimit');
+  
+  if (idIdx === -1 || creditLimitIdx === -1) {
+    Logger.log('Cannot repair Owners sheet: headers "id" or "creditLimit" not found.');
+    return;
+  }
+  
+  let repairedCount = 0;
+  for (let i = 1; i < values.length; i++) {
+    const rowNum = i + 1;
+    const idVal = String(values[i][idIdx]).trim();
+    const creditLimitVal = String(values[i][creditLimitIdx]).trim();
+    
+    // Check if the ID column does NOT start with 'own', but the creditLimit column DOES start with 'own'
+    if (!idVal.startsWith('own') && creditLimitVal.startsWith('own')) {
+      Logger.log('Detected swapped ID and creditLimit in row ' + rowNum + '. Swapping back...');
+      const realId = creditLimitVal;
+      const realLimit = parseFloat(idVal) || 50000;
+      
+      sheet.getRange(rowNum, idIdx + 1).setValue(realId);
+      sheet.getRange(rowNum, creditLimitIdx + 1).setValue(realLimit);
+      repairedCount++;
+    } else if (creditLimitVal.startsWith('own')) {
+      Logger.log('Detected invalid creditLimit (owner ID) in row ' + rowNum + '. Resetting to 50000...');
+      sheet.getRange(rowNum, creditLimitIdx + 1).setValue(50000);
+      repairedCount++;
+    }
+  }
+  
+  if (repairedCount > 0) {
+    Logger.log('Repaired ' + repairedCount + ' owner rows.');
+  }
+}
+
 function json(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
@@ -978,6 +1023,13 @@ function handleGetData(SHEET_ID) {
     repairMissingHeaders(ss);
   } catch (err) {
     Logger.log('Error repairing headers in handleGetData: ' + err);
+  }
+  
+  // Repair any corrupted/swapped owner data (e.g. creditLimit swapped with ID)
+  try {
+    repairOwnersSheetData(ss);
+  } catch (err) {
+    Logger.log('Error repairing owner data in handleGetData: ' + err);
   }
   
   const parseValue = (val) => {
