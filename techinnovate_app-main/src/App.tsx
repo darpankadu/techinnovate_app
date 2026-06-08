@@ -492,6 +492,76 @@ function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Forgot password flow states
+  const [isForgotMode, setIsForgotMode] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
+
+  const handleForgotClick = () => {
+    setIsForgotMode(true)
+    setOtpSent(false)
+    setOtp('')
+    setNewPassword('')
+    setError('')
+    setSuccessMsg('')
+  }
+
+  const handleSendResetCode = async () => {
+    const cleanEmail = sanitizeInput(email)
+    if (!cleanEmail) {
+      setError('Email is required.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const res = await googleSync.sendResetOTP(cleanEmail)
+      if (res.success) {
+        setOtpSent(true)
+        setSuccessMsg('Verification code sent to your email!')
+      } else {
+        setError(res.error || 'Failed to send verification code.')
+      }
+    } catch (e: any) {
+      setError(e.toString())
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    const cleanEmail = sanitizeInput(email)
+    const cleanOtp = sanitizeInput(otp)
+    const cleanNewPass = sanitizeInput(newPassword)
+
+    if (!cleanOtp || !cleanNewPass) {
+      setError('Verification code and new password are required.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const res = await googleSync.resetPassword(cleanEmail, cleanOtp, cleanNewPass)
+      if (res.success) {
+        setSuccessMsg('Password reset successfully! You can now sign in.')
+        setIsForgotMode(false)
+        setOtpSent(false)
+        setOtp('')
+        setNewPassword('')
+        setPassword('') // Clear password field
+      } else {
+        setError(res.error || 'Failed to reset password.')
+      }
+    } catch (e: any) {
+      setError(e.toString())
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleLogin = async () => {
     const cleanEmail = sanitizeInput(email)
     const cleanPassword = sanitizeInput(password)
@@ -547,55 +617,117 @@ function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 pt-12">
-      <button onClick={() => setView('welcome')} className="mb-8 text-[#6B7280] hover:text-[#111827]">← Back</button>
+      <button onClick={() => isForgotMode ? setIsForgotMode(false) : setView('welcome')} className="mb-8 text-[#6B7280] hover:text-[#111827]">← Back</button>
       
       <div className="text-center mb-10">
         <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#3B82F6] flex items-center justify-center shadow-lg shadow-[#3B82F6]/20">
           <BarChart3 className="w-8 h-8 text-white" />
         </div>
-        <h2 className="text-[24px] font-bold text-[#111827]">{t('owner', lang)} {t('login', lang)}</h2>
+        <h2 className="text-[24px] font-bold text-[#111827]">
+          {isForgotMode ? 'Reset Password' : `${t('owner', lang)} ${t('login', lang)}`}
+        </h2>
       </div>
 
-      <div className="space-y-3">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
-        />
-        {error && <p className="text-[#DC2626] text-[13px]">{error}</p>}
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full h-[52px] bg-[#3B82F6] text-white font-semibold rounded-xl mt-2 hover:bg-[#2563EB] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Signing In...
-            </>
-          ) : (
-            t('login', lang)
-          )}
-        </button>
-        
-        <div className="mt-6 pt-6 border-t border-[#E2E6EB] text-center">
-          <p className="text-[14px] text-[#6B7280]">
-            Don't have an account?{' '}
-            <button onClick={() => setView('owner-register')} className="text-[#3B82F6] hover:text-[#2563EB] font-medium">
-              Register
+      {successMsg && <p className="text-[#10B981] bg-[#D1FAE5] p-3 rounded-xl text-[12px] font-medium mb-3">{successMsg}</p>}
+      {error && <p className="text-[#DC2626] bg-[#FEE2E2] p-3 rounded-xl text-[12px] font-medium mb-3">{error}</p>}
+
+      {!isForgotMode ? (
+        <div className="space-y-3">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+          />
+          <div className="text-right">
+            <button type="button" onClick={handleForgotClick} className="text-[#3B82F6] hover:text-[#2563EB] text-[12px] font-medium">
+              Forgot Password?
             </button>
-          </p>
+          </div>
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full h-[52px] bg-[#3B82F6] text-white font-semibold rounded-xl mt-2 hover:bg-[#2563EB] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Signing In...
+              </>
+            ) : (
+              t('login', lang)
+            )}
+          </button>
+          
+          <div className="mt-6 pt-6 border-t border-[#E2E6EB] text-center">
+            <p className="text-[14px] text-[#6B7280]">
+              Don't have an account?{' '}
+              <button onClick={() => setView('owner-register')} className="text-[#3B82F6] hover:text-[#2563EB] font-medium">
+                Register
+              </button>
+            </p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            disabled={otpSent}
+            className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none disabled:opacity-60"
+          />
+          {otpSent && (
+            <>
+              <input
+                type="text"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder="6-digit Verification Code"
+                className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none text-center font-semibold tracking-widest"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New Password"
+                className="w-full h-[52px] px-4 bg-white border border-[#E2E6EB] rounded-xl text-[15px] focus:border-[#3B82F6] focus:outline-none"
+              />
+            </>
+          )}
+
+          <button
+            onClick={otpSent ? handleResetPassword : handleSendResetCode}
+            disabled={loading}
+            className="w-full h-[52px] bg-[#E10600] text-white font-semibold rounded-xl mt-2 hover:bg-[#991B1B] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Processing...
+              </>
+            ) : (
+              otpSent ? 'Reset Password' : 'Send Verification Code'
+            )}
+          </button>
+          
+          <div className="mt-4 text-center">
+            <button type="button" onClick={() => { setIsForgotMode(false); setSuccessMsg(''); setError(''); }} className="text-[#6B7280] hover:text-[#111827] text-[12px] font-medium">
+              Back to Sign In
+            </button>
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -1076,7 +1208,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
   const handleCapture = (type: string, capture: CameraCapture) => {
     setCaptures(prev => ({ ...prev, [type]: capture }))
     setShowCamera(null)
-    if (step < 5) setStep(step + 1)
+    if (step < 4) setStep(step + 1)
   }
 
   const total = parseFloat(form.kgs) * parseFloat(form.rate) || 0
@@ -1308,11 +1440,10 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
   }
 
   const steps = [
-    { id: 1, title: t('recordVideo', lang), icon: Video, key: 'video', done: !!captures.video },
-    { id: 2, title: t('pumpPhoto', lang), icon: Camera, key: 'pump', done: !!captures.pump },
-    { id: 3, title: t('receiptPhoto', lang), icon: Receipt, key: 'receipt', done: !!captures.receipt },
-    { id: 4, title: t('manualDetails', lang), icon: Fuel, key: 'details', done: !!form.kgs && !!form.vehicleId },
-    { id: 5, title: t('odometerPhoto', lang), icon: Gauge, key: 'odo', done: !!captures.odo },
+    { id: 1, title: t('pumpPhoto', lang), icon: Camera, key: 'pump', done: !!captures.pump },
+    { id: 2, title: t('receiptPhoto', lang), icon: Receipt, key: 'receipt', done: !!captures.receipt },
+    { id: 3, title: t('manualDetails', lang), icon: Fuel, key: 'details', done: !!form.kgs && !!form.vehicleId },
+    { id: 4, title: t('odometerPhoto', lang), icon: Gauge, key: 'odo', done: !!captures.odo },
   ]
 
   return (
@@ -1321,7 +1452,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
         <div className="flex items-center justify-between mb-6">
           <button onClick={() => setView('driver-dash')} className="text-[#6B7280] hover:text-[#111827]">← Cancel</button>
           <div className="text-center">
-            <p className="text-[12px] text-[#6B7280]">Step {step} of 5</p>
+            <p className="text-[12px] text-[#6B7280]">Step {step} of 4</p>
             <div className="flex gap-1 mt-1.5">
               {steps.map(s => (
                 <div key={s.id} className={`h-1 w-8 rounded-full transition-all ${s.id <= step ? 'bg-[#E10600]' : 'bg-[#E2E6EB]'}`} />
@@ -1339,29 +1470,6 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
             exit={{ opacity: 0, x: -20 }}
           >
             {step === 1 && (
-              <div className="text-center py-8">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#FDE8E8] border border-[#FECACA] flex items-center justify-center">
-                  <Video className="w-10 h-10 text-[#E10600]" />
-                </div>
-                <h2 className="text-[24px] font-bold mb-2 text-[#111827]">{t('recordVideo', lang)}</h2>
-                <p className="text-[#6B7280] mb-8 px-6">Record the complete CNG filling process. Minimum 10 seconds required.</p>
-                <button
-                  onClick={() => setShowCamera('video')}
-                  className="w-full max-w-[280px] h-[56px] bg-[#E10600] rounded-2xl font-semibold flex items-center justify-center gap-2 mx-auto"
-                >
-                  <Play className="w-5 h-5" />
-                  Start Recording
-                </button>
-                {captures.video && (
-                  <div className="mt-6 p-4 rounded-2xl bg-[#DCFCE7] border border-[#BBF7D0]">
-                    <CheckCircle2 className="w-5 h-5 text-[#166534] mx-auto mb-1" />
-                    <p className="text-[13px] text-[#166534]">Video captured</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step === 2 && (
               <div className="text-center py-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#DBEAFE] border border-[#BFDBFE] flex items-center justify-center">
                   <Camera className="w-10 h-10 text-[#3B82F6]" />
@@ -1390,7 +1498,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
               </div>
             )}
 
-            {step === 3 && (
+            {step === 2 && (
               <div className="text-center py-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center">
                   <Receipt className="w-10 h-10 text-[#92400E]" />
@@ -1419,7 +1527,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
               </div>
             )}
 
-            {step === 4 && (
+            {step === 3 && (
               <div className="py-4">
                 <h2 className="text-[24px] font-bold mb-6 text-center text-[#111827]">{t('manualDetails', lang)}</h2>
                 <div className="space-y-4">
@@ -1518,7 +1626,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
                   </div>
                   
                   <button
-                    onClick={() => setStep(5)}
+                    onClick={() => setStep(4)}
                     disabled={!form.kgs || !form.rate || !form.vehicleId}
                     className="w-full h-[56px] bg-[#3B82F6] text-white font-semibold rounded-2xl mt-4 disabled:opacity-50"
                   >
@@ -1528,7 +1636,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
               </div>
             )}
 
-            {step === 5 && (
+            {step === 4 && (
               <div className="text-center py-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-[24px] bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
                   <Gauge className="w-10 h-10 text-violet-400" />

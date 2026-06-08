@@ -149,6 +149,16 @@ export const googleSync = {
     return { success: result.success === true, owner: result.owner, error: result.error }
   },
 
+  async sendResetOTP(email: string): Promise<{ success: boolean; error?: string }> {
+    const result = await this.post({ action: 'sendResetOTP', email })
+    return { success: result.success === true, error: result.error }
+  },
+
+  async resetPassword(email: string, otp: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    const result = await this.post({ action: 'resetPassword', email, otp, newPassword })
+    return { success: result.success === true, error: result.error }
+  },
+
   async addDriver(driver: any): Promise<boolean> {
     const result = await this.post({ action: 'addDriver', ...driver })
     return result.success !== false

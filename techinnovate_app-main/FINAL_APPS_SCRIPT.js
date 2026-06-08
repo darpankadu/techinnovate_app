@@ -453,6 +453,8 @@ function doPost(e) {
     
     // Auth & Login
     if (action === 'loginOwner') return handleLoginOwner(data, SHEET_ID);
+    if (action === 'sendResetOTP') return handleSendResetOTP(data, SHEET_ID);
+    if (action === 'resetPassword') return handleResetPassword(data, SHEET_ID);
     
     // Existing CRUD
     if (action === 'registerOwner') return handleRegisterOwner(data, SHEET_ID);
@@ -1262,6 +1264,109 @@ function handleLoginOwner(data, SHEET_ID) {
   }
   
   return json({ success: false, error: 'Invalid email or password' });
+}
+
+function handleSendResetOTP(data, SHEET_ID) {
+  const email = (data.email || '').trim().toLowerCase();
+  if (email === '') {
+    return json({ success: false, error: 'Email address is required.' });
+  }
+
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Owners');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const emailIdx = findColumnIndex(headers, 'email');
+
+  if (emailIdx === -1) {
+    return json({ success: false, error: 'Database structure error.' });
+  }
+
+  let emailFound = false;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][emailIdx]).trim().toLowerCase() === email) {
+      emailFound = true;
+      break;
+    }
+  }
+
+  if (!emailFound) {
+    return json({ success: false, error: 'This email is not registered.' });
+  }
+
+  // Rate limiting: allow only one OTP request every 60 seconds per email
+  const cache = CacheService.getScriptCache();
+  const cooldownKey = 'cooldown_reset_' + email;
+  if (cache.get(cooldownKey)) {
+    return json({ success: false, error: 'Please wait before requesting another code.' });
+  }
+
+  // Generate a 6-digit random number
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+  // Store the OTP in the cache (expires in 10 minutes)
+  cache.put('reset_' + email, otp, 600);
+
+  // Store a cooldown flag in the cache (expires in 60 seconds)
+  cache.put(cooldownKey, '1', 60);
+
+  try {
+    MailApp.sendEmail({
+      to: email,
+      subject: 'CNG Fuel Tracker — Password Reset Code',
+      htmlBody: '<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px; margin: 0 auto; color: #1a202c;">' +
+        '<h2 style="color: #e10600; margin-bottom: 20px;">Password Reset Request</h2>' +
+        '<p>You have requested to reset your password for your CNG Fuel Tracker owner account. Use the following verification code to set a new password:</p>' +
+        '<div style="font-size: 28px; font-weight: bold; background-color: #f7fafc; padding: 15px; text-align: center; border-radius: 6px; letter-spacing: 4px; margin: 25px 0; border: 1px dashed #cbd5e0; color: #e10600;">' +
+        otp + '</div>' +
+        '<p style="font-size: 12px; color: #718096; margin-top: 25px;">This code will expire in 10 minutes. If you did not make this request, you can safely ignore this email.</p>' +
+        '</div>'
+    });
+    return json({ success: true });
+  } catch (err) {
+    return json({ success: false, error: 'Failed to send email: ' + err.toString() });
+  }
+}
+
+function handleResetPassword(data, SHEET_ID) {
+  const email = (data.email || '').trim().toLowerCase();
+  const userOtp = (data.otp || '').trim();
+  const newPassword = (data.newPassword || '');
+
+  if (email === '' || userOtp === '' || newPassword === '') {
+    return json({ success: false, error: 'Email, verification code, and new password are required.' });
+  }
+
+  const cache = CacheService.getScriptCache();
+  const cachedOtp = cache.get('reset_' + email);
+
+  if (!cachedOtp) {
+    return json({ success: false, error: 'Verification code has expired or is invalid.' });
+  }
+
+  if (cachedOtp !== userOtp) {
+    return json({ success: false, error: 'Invalid verification code. Please try again.' });
+  }
+
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Owners');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const emailIdx = findColumnIndex(headers, 'email');
+  const passwordIdx = findColumnIndex(headers, 'password');
+
+  if (emailIdx === -1 || passwordIdx === -1) {
+    return json({ success: false, error: 'Database structure error.' });
+  }
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][emailIdx]).trim().toLowerCase() === email) {
+      const hashedPassword = hashPassword(newPassword);
+      sheet.getRange(i + 1, passwordIdx + 1).setValue(hashedPassword);
+      cache.remove('reset_' + email);
+      return json({ success: true });
+    }
+  }
+
+  return json({ success: false, error: 'Account not found.' });
 }
 
 // ============= EXISTING CRUD =============
