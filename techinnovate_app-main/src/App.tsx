@@ -272,7 +272,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#F5F6F8] text-[#111827] flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-gray-100">
+      <header className="sticky top-0 z-40 bg-[#F5F6F8] border-b border-[#E2E6EB]">
         <div className={`mx-auto px-4 h-14 flex items-center justify-between ${view === 'admin-dash' || view === 'owner-dash' ? 'max-w-full px-6' : 'max-w-[480px]'}`}>
           <img src="logo.jpg" alt="Techinnovate" className="h-8" />
           
@@ -292,13 +292,13 @@ export default function App() {
                 <span className="text-[10px] font-semibold text-[#92400E]">OFFLINE</span>
               </div>
             )}
-            <div className="flex bg-[#F5F6F8] rounded-lg p-0.5 border border-[#E2E6EB]">
+            <div className="flex bg-white rounded-lg p-0.5 border border-[#E2E6EB]">
               {(['en', 'hi', 'gu'] as Language[]).map(l => (
                 <button
                   key={l}
                   onClick={() => changeLang(l)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                    lang === l ? 'bg-white text-[#111827] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'
+                    lang === l ? 'bg-[#F5F6F8] text-[#111827] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'
                   }`}
                 >
                   {l.toUpperCase()}
@@ -306,7 +306,7 @@ export default function App() {
               ))}
             </div>
             {session && (
-              <button onClick={logout} className="p-2 hover:bg-[#F5F6F8] rounded-lg transition-colors">
+              <button onClick={logout} className="p-2 hover:bg-white rounded-lg transition-colors">
                 <LogOut className="w-4 h-4 text-[#6B7280]" />
               </button>
             )}
