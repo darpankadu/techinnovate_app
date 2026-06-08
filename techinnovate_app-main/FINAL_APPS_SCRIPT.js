@@ -389,6 +389,45 @@ function fixExistingShiftedOwners(ss) {
   Logger.log('Automatic fix completed. Fixed ' + fixedCount + ' rows.');
 }
 
+function repairMissingHeaders(ss) {
+  const sheetsConfig = CONFIG.SHEETS;
+  for (const sheetName in sheetsConfig) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) continue;
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow === 0) {
+      createSheetWithHeaders(ss, sheetName, sheetsConfig[sheetName].headers);
+      continue;
+    }
+    
+    // Read the first row's first few cells
+    const lastCol = Math.max(1, Math.min(10, sheet.getLastColumn()));
+    const firstRowValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const firstCell = String(firstRowValues[0]).trim();
+    
+    // If first cell is not 'id' (case-insensitive), the header row is missing/deleted
+    if (firstCell.toLowerCase() !== 'id') {
+      Logger.log('Detected missing or invalid headers in sheet: ' + sheetName + '. Row 1 starts with: "' + firstCell + '". Attempting self-healing...');
+      
+      // Insert a new blank row at the top (shifting everything down)
+      sheet.insertRowBefore(1);
+      
+      // Write the expected headers into row 1
+      const headers = sheetsConfig[sheetName].headers;
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      
+      // Apply bold, red background, white text styling to the new header row
+      sheet.getRange(1, 1, 1, headers.length)
+           .setFontWeight('bold')
+           .setBackground('#EE2726')
+           .setFontColor('white');
+      
+      Logger.log('Self-healing complete. Restored headers for sheet: ' + sheetName);
+    }
+  }
+}
+
 function recalculateAllOwnersCredit(ss) {
   const ownerSheet = ss.getSheetByName('Owners');
   const fillsSheet = ss.getSheetByName('Fills');
@@ -1568,6 +1607,13 @@ function handleDeleteVehicle(data, SHEET_ID) {
 // ============= GET ALL DATA =============
 function handleGetData(SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
+  
+  // Auto-heal any sheets missing their headers
+  try {
+    repairMissingHeaders(ss);
+  } catch (err) {
+    Logger.log('Error repairing headers in handleGetData: ' + err);
+  }
   
   // Recalculate and update owner credits automatically
   try {
