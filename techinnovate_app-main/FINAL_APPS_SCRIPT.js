@@ -253,6 +253,13 @@ function findColumnIndex(headers, columnName) {
   return -1;
 }
 
+function sanitizeFormula(val) {
+  if (typeof val === 'string' && (val.startsWith('=') || val.startsWith('+') || val.startsWith('-') || val.startsWith('@'))) {
+    return "'" + val;
+  }
+  return val;
+}
+
 function appendRowDynamically(sheet, data, sheetConfigName) {
   const headers = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
   const rowData = new Array(headers.length).fill('');
@@ -331,6 +338,8 @@ function appendRowDynamically(sheet, data, sheetConfigName) {
     
     if (cleanHeader === 'videourl' && typeof val === 'string' && val.startsWith('http') && !val.startsWith('=')) {
       val = '=HYPERLINK("' + val + '", "Video")';
+    } else {
+      val = sanitizeFormula(val);
     }
     
     rowData[i] = val;
@@ -394,6 +403,16 @@ function doPost(e) {
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
     
+    // Rate Limiting (using CacheService, max 30 requests/minute per clientId)
+    const clientId = data.clientId || 'guest';
+    const cacheKey = 'rate_' + clientId;
+    const cache = CacheService.getScriptCache();
+    const currentReqs = parseInt(cache.get(cacheKey)) || 0;
+    if (currentReqs >= 30) {
+      return json({ success: false, error: 'Rate limit exceeded. Please wait a minute before retrying.' });
+    }
+    cache.put(cacheKey, String(currentReqs + 1), 60); // 60 seconds TTL
+    
     // Upload & Core
     if (action === 'uploadMedia') return handleUploadMedia(data, DRIVE_FOLDER_ID);
     if (action === 'addFill') return handleAddFill(data, SHEET_ID);
@@ -431,6 +450,9 @@ function doPost(e) {
     // OTP Verification
     if (action === 'sendOTP') return handleSendOTP(data);
     if (action === 'verifyOTP') return handleVerifyOTP(data);
+    
+    // Auth & Login
+    if (action === 'loginOwner') return handleLoginOwner(data, SHEET_ID);
     
     // Existing CRUD
     if (action === 'registerOwner') return handleRegisterOwner(data, SHEET_ID);
@@ -579,6 +601,7 @@ function handleUpdateOwner(data, SHEET_ID) {
             let value = data[field];
             if (field === 'creditFrozen') value = value === true || value === 'true';
             else if (['creditLimit', 'creditUsed', 'totalPaid'].includes(field)) value = parseFloat(value) || 0;
+            else value = sanitizeFormula(value);
             sheet.getRange(rowNum, colIdx + 1).setValue(value);
             updates.push(field);
           }
@@ -665,8 +688,11 @@ function handleGetOwnerPayments(data, SHEET_ID) {
   const headers = values[0];
   const payments = [];
   
+  const ownerIdIdx = findColumnIndex(headers, 'ownerId');
+  const checkIdx = ownerIdIdx >= 0 ? ownerIdIdx : 1;
+  
   for (let i = 1; i < values.length; i++) {
-    if (values[i][1] === data.ownerId) {
+    if (String(values[i][checkIdx]) === String(data.ownerId)) {
       const obj = {};
       headers.forEach((h, idx) => {
         let val = values[i][idx];
@@ -749,9 +775,9 @@ function handleResolveAlert(data, SHEET_ID) {
       const resolutionNoteIdx = findColumnIndex(headers, 'resolutionNote');
       
       if (resolvedIdx >= 0) sheet.getRange(rowNum, resolvedIdx + 1).setValue(true);
-      if (resolvedByIdx >= 0 && data.resolvedBy) sheet.getRange(rowNum, resolvedByIdx + 1).setValue(data.resolvedBy);
+      if (resolvedByIdx >= 0 && data.resolvedBy) sheet.getRange(rowNum, resolvedByIdx + 1).setValue(sanitizeFormula(data.resolvedBy));
       if (resolvedAtIdx >= 0) sheet.getRange(rowNum, resolvedAtIdx + 1).setValue(new Date().toISOString());
-      if (resolutionNoteIdx >= 0 && data.resolutionNote) sheet.getRange(rowNum, resolutionNoteIdx + 1).setValue(data.resolutionNote);
+      if (resolutionNoteIdx >= 0 && data.resolutionNote) sheet.getRange(rowNum, resolutionNoteIdx + 1).setValue(sanitizeFormula(data.resolutionNote));
       
       return json({ success: true, resolved: true });
     }
@@ -782,6 +808,7 @@ function handleUpdateFill(data, SHEET_ID) {
           if (colIdx >= 0) {
             let value = data[field];
             if (field === 'verified') value = value === true || value === 'true';
+            else value = sanitizeFormula(value);
             sheet.getRange(rowNum, colIdx + 1).setValue(value);
             updates.push(field);
           }
@@ -821,7 +848,11 @@ function handleUpdateVehicle(data, SHEET_ID) {
           const colIdx = findColumnIndex(headers, field);
           if (colIdx >= 0) {
             let value = data[field];
-            if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) value = parseInt(value) || 0;
+            if (['initialOdo', 'currentOdo', 'capacity'].includes(field)) {
+              value = parseInt(value) || 0;
+            } else {
+              value = sanitizeFormula(value);
+            }
             
             if (field === 'currentOdo') {
               const currentOdoVal = parseInt(values[i][colIdx]) || 0;
@@ -897,15 +928,17 @@ function handleUpdateCreditAction(data, SHEET_ID) {
     colMap[String(h).trim().toLowerCase()] = i;
   });
   
+  const actionIdIdx = colMap['id'] !== undefined ? colMap['id'] : 0;
+  
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0]).trim() === String(data.actionId).trim()) {
+    if (String(values[i][actionIdIdx]).trim() === String(data.actionId).trim()) {
       const rowNum = i + 1;
       
       const statusIdx = colMap['status'];
       const approvedByIdx = colMap['approvedby'];
       
-      if (statusIdx !== undefined) sheet.getRange(rowNum, statusIdx + 1).setValue(data.status);
-      if (approvedByIdx !== undefined && data.approvedBy) sheet.getRange(rowNum, approvedByIdx + 1).setValue(data.approvedBy);
+      if (statusIdx !== undefined) sheet.getRange(rowNum, statusIdx + 1).setValue(sanitizeFormula(data.status));
+      if (approvedByIdx !== undefined && data.approvedBy) sheet.getRange(rowNum, approvedByIdx + 1).setValue(sanitizeFormula(data.approvedBy));
       
       // If approved, update owner's credit limit
       if (data.status === 'approved') {
@@ -923,10 +956,12 @@ function handleUpdateCreditAction(data, SHEET_ID) {
             const ownerData = ownerSheet.getDataRange().getValues();
             const ownerHeaders = ownerData[0];
             const creditLimitIdx = ownerHeaders.map(h => String(h).trim().toLowerCase()).indexOf('creditlimit');
+            const ownerIdColIdx = ownerHeaders.map(h => String(h).trim().toLowerCase()).indexOf('id');
+            const checkOwnerIdx = ownerIdColIdx >= 0 ? ownerIdColIdx : 0;
             
             if (creditLimitIdx >= 0) {
               for (let j = 1; j < ownerData.length; j++) {
-                if (String(ownerData[j][0]).trim() === String(ownerId).trim()) {
+                if (String(ownerData[j][checkOwnerIdx]).trim() === String(ownerId).trim()) {
                   const currentLimit = parseFloat(ownerData[j][creditLimitIdx]) || 0;
                   ownerSheet.getRange(j + 1, creditLimitIdx + 1).setValue(currentLimit + amount);
                   break;
@@ -1149,18 +1184,99 @@ function handleVerifyOTP(data) {
   }
 }
 
+// Hash a password using SHA-256
+function hashPassword(password) {
+  if (!password) return '';
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password, Utilities.Charset.UTF_8);
+  let hash = '';
+  for (let i = 0; i < digest.length; i++) {
+    let byteVal = digest[i];
+    if (byteVal < 0) byteVal += 256;
+    let byteString = byteVal.toString(16);
+    if (byteString.length === 1) byteString = '0' + byteString;
+    hash += byteString;
+  }
+  return hash;
+}
+
+// Secure owner login with backward-compatible auto-migration
+function handleLoginOwner(data, SHEET_ID) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Owners');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const emailIdx = findColumnIndex(headers, 'email');
+  const passwordIdx = findColumnIndex(headers, 'password');
+  const statusIdx = findColumnIndex(headers, 'status');
+  
+  if (emailIdx === -1 || passwordIdx === -1) {
+    return json({ success: false, error: 'Database structure error' });
+  }
+  
+  const email = String(data.email).trim().toLowerCase();
+  const password = String(data.password);
+  const hashedPassword = hashPassword(password);
+  
+  for (let i = 1; i < values.length; i++) {
+    const rowEmail = String(values[i][emailIdx]).trim().toLowerCase();
+    if (rowEmail === email) {
+      const storedPassword = String(values[i][passwordIdx]).trim();
+      const statusVal = statusIdx >= 0 ? String(values[i][statusIdx]).trim() : 'active';
+      
+      if (statusVal !== 'active') {
+        return json({ success: false, error: 'Account is not active' });
+      }
+      
+      let isMatch = false;
+      let needsMigration = false;
+      
+      // A SHA-256 hash in hex is exactly 64 characters long and contains only hex chars
+      if (storedPassword.length === 64 && /^[0-9a-f]+$/i.test(storedPassword)) {
+        if (storedPassword.toLowerCase() === hashedPassword.toLowerCase()) {
+          isMatch = true;
+        }
+      } else {
+        // Plaintext fallback
+        if (storedPassword === password) {
+          isMatch = true;
+          needsMigration = true;
+        }
+      }
+      
+      if (isMatch) {
+        if (needsMigration) {
+          sheet.getRange(i + 1, passwordIdx + 1).setValue(hashedPassword);
+        }
+        
+        // Return owner data without password field
+        const ownerInfo = {};
+        headers.forEach((h, j) => {
+          if (h && String(h).toLowerCase() !== 'password') {
+            ownerInfo[h] = values[i][j];
+          }
+        });
+        return json({ success: true, owner: ownerInfo });
+      } else {
+        return json({ success: false, error: 'Invalid email or password' });
+      }
+    }
+  }
+  
+  return json({ success: false, error: 'Invalid email or password' });
+}
+
 // ============= EXISTING CRUD =============
 function handleRegisterOwner(data, SHEET_ID) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('Owners');
   // Generate ID if not provided
   const ownerId = data.id || 'own_' + Date.now();
+  const hashedPassword = hashPassword(data.password);
   const newOwnerData = {
     id: ownerId,
     name: data.name,
     email: data.email,
     phone: data.phone,
     business: data.business,
-    password: data.password,
+    password: hashedPassword,
     status: 'active',
     createdAt: new Date().toISOString(),
     creditLimit: data.creditLimit !== undefined ? data.creditLimit : 50000,
@@ -1219,10 +1335,10 @@ function handleUpdateDriver(data, SHEET_ID) {
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][checkIdx]) === String(data.id)) {
       if (data.code !== undefined && codeIdx >= 0) {
-        sheet.getRange(i + 1, codeIdx + 1).setValue(data.code);
+        sheet.getRange(i + 1, codeIdx + 1).setValue(sanitizeFormula(data.code));
       }
       if (data.assignedVehicleId !== undefined && assignedVehicleIdIdx >= 0) {
-        sheet.getRange(i + 1, assignedVehicleIdIdx + 1).setValue(data.assignedVehicleId || '');
+        sheet.getRange(i + 1, assignedVehicleIdIdx + 1).setValue(sanitizeFormula(data.assignedVehicleId || ''));
       }
       break;
     }
@@ -1283,7 +1399,12 @@ function handleGetData(SHEET_ID) {
     return values.slice(1).map(row => {
       const obj = {};
       headers.forEach((h, i) => {
-        obj[h] = parseValue(row[i]);
+        const cleanH = String(h).trim().toLowerCase().replace(/[\s_-]/g, '');
+        if (name === 'Owners' && cleanH === 'password') {
+          obj[h] = '';
+        } else {
+          obj[h] = parseValue(row[i]);
+        }
       });
       return obj;
     });

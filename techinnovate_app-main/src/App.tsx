@@ -490,26 +490,58 @@ function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const cleanEmail = sanitizeInput(email)
     const cleanPassword = sanitizeInput(password)
-    const owners = storage.getOwners()
     console.log('[OwnerLogin] Attempting login with email:', cleanEmail)
-    console.log('[OwnerLogin] Available owners:', owners.map(o => ({ id: o.id, email: o.email, business: o.business })))
-    // Filter out owners with empty IDs, then find matching credentials
-    const validOwners = owners.filter(o => o.id && o.id !== '')
-    const owner = validOwners.find(o => o.email === cleanEmail && o.password === cleanPassword)
-    console.log('[OwnerLogin] Found owner:', owner, 'Keys:', owner ? Object.keys(owner) : 'N/A')
     
-    if (owner) {
-      const session = { role: 'owner' as Role, userId: owner.id, ownerId: owner.id, name: owner.name }
-      console.log('[OwnerLogin] Setting session:', session)
-      storage.setSession(session)
-      setSession(session)
-      setView('owner-dash')
-    } else {
-      setError('Invalid credentials')
+    setLoading(true)
+    setError('')
+    try {
+      const res = await googleSync.loginOwner(cleanEmail, cleanPassword)
+      if (res.success && res.owner) {
+        const owner = res.owner
+        const session = { role: 'owner' as Role, userId: owner.id, ownerId: owner.id, name: owner.name }
+        console.log('[OwnerLogin] Backend login success:', session)
+        
+        // Cache owner details locally but blank out password
+        const owners = storage.getOwners().filter(o => o.id !== owner.id)
+        storage.saveOwners([...owners, { ...owner, password: '' }])
+        
+        storage.setSession(session)
+        setSession(session)
+        setView('owner-dash')
+      } else {
+        // Fallback for offline validation using cached local data
+        const owners = storage.getOwners()
+        const validOwners = owners.filter(o => o.id && o.id !== '')
+        const cachedOwner = validOwners.find(o => o.email === cleanEmail && o.password === cleanPassword)
+        if (cachedOwner) {
+          const session = { role: 'owner' as Role, userId: cachedOwner.id, ownerId: cachedOwner.id, name: cachedOwner.name }
+          storage.setSession(session)
+          setSession(session)
+          setView('owner-dash')
+        } else {
+          setError(res.error || 'Invalid credentials')
+        }
+      }
+    } catch (e: any) {
+      // Offline fallback
+      const owners = storage.getOwners()
+      const validOwners = owners.filter(o => o.id && o.id !== '')
+      const cachedOwner = validOwners.find(o => o.email === cleanEmail && o.password === cleanPassword)
+      if (cachedOwner) {
+        const session = { role: 'owner' as Role, userId: cachedOwner.id, ownerId: cachedOwner.id, name: cachedOwner.name }
+        storage.setSession(session)
+        setSession(session)
+        setView('owner-dash')
+      } else {
+        setError('Login failed: ' + e.toString())
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -542,9 +574,17 @@ function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v
         {error && <p className="text-[#DC2626] text-[13px]">{error}</p>}
         <button
           onClick={handleLogin}
-          className="w-full h-[52px] bg-[#3B82F6] text-white font-semibold rounded-xl mt-2 hover:bg-[#2563EB] active:scale-[0.98] transition-all"
+          disabled={loading}
+          className="w-full h-[52px] bg-[#3B82F6] text-white font-semibold rounded-xl mt-2 hover:bg-[#2563EB] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {t('login', lang)}
+          {loading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Signing In...
+            </>
+          ) : (
+            t('login', lang)
+          )}
         </button>
         
         <div className="mt-6 pt-6 border-t border-[#E2E6EB] text-center">
@@ -1606,7 +1646,7 @@ function FillWizard({ lang, session, setView, syncKey }: { lang: Language; sessi
 }
 
 function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; session: any; syncKey: number; loadData?: () => Promise<void> }) {
-  const [tab, setTab] = useState<'dashboard' | 'fills' | 'vehicles' | 'drivers' | 'payments' | 'alerts' | 'media'>('dashboard')
+  const [tab, setTab] = useState<'dashboard' | 'fills' | 'vehicles' | 'drivers' | 'payments' | 'alerts' | 'media' | 'reports'>('dashboard')
   const [showAddDriver, setShowAddDriver] = useState(false)
   const [showAddVehicle, setShowAddVehicle] = useState(false)
   const [showCreditRequest, setShowCreditRequest] = useState(false)
@@ -1624,6 +1664,11 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
   const [mediaFilterDriver, setMediaFilterDriver] = useState<string>('all')
   const [mediaFilterVehicle, setMediaFilterVehicle] = useState<string>('all')
   const [mediaFilterVerified, setMediaFilterVerified] = useState<'all' | 'verified' | 'pending'>('all')
+
+  // Reports tab filters
+  const [reportRange, setReportRange] = useState<'weekly' | 'monthly' | 'all'>('weekly')
+  const [reportVehicle, setReportVehicle] = useState<string>('all')
+  const [reportDriver, setReportDriver] = useState<string>('all')
 
   const ownerId = session.ownerId
   const ownerIdStr = String(ownerId)
@@ -1718,6 +1763,7 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
   const nav = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'fills', label: 'Fills', icon: '⛽' },
+    { key: 'reports', label: 'Reports', icon: '📋' },
     { key: 'vehicles', label: 'Vehicles', icon: '🚛' },
     { key: 'drivers', label: 'Drivers', icon: '👷' },
     { key: 'media', label: 'Media', icon: '📷' },
@@ -1754,6 +1800,286 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
       </div>
     )
   }
+
+  const exportToCSV = (filename: string, headers: string[], rows: any[][]) => {
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
+  const exportToPDF = (reportTitle: string, filteredFills: Fill[], filterInfo: { range: string; vehicle: string; driver: string }) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Pop-up blocker is enabled. Please allow pop-ups to export PDF.');
+      return;
+    }
+
+    const lookupVehicle = (id: string) => {
+      const v = vehicles.find(veh => String(veh.id) === String(id) || veh.plate === id);
+      return v ? v.plate : id;
+    };
+    const lookupDriver = (id: string) => {
+      const d = drivers.find(drv => String(drv.id) === String(id));
+      return d ? d.name : id;
+    };
+
+    const totalKgs = filteredFills.reduce((s, f) => s + f.kgs, 0);
+    const totalCost = filteredFills.reduce((s, f) => s + f.total, 0);
+
+    const rowsHtml = filteredFills.map(f => `
+      <tr>
+        <td>${new Date(f.time).toLocaleString()}</td>
+        <td>${lookupVehicle(f.vehicleId)}</td>
+        <td>${lookupDriver(f.driverId)}</td>
+        <td>${f.station || 'N/A'}</td>
+        <td style="text-align: right;">${f.kgs.toFixed(2)}</td>
+        <td style="text-align: right;">₹${f.rate.toFixed(2)}</td>
+        <td style="text-align: right; font-weight: bold;">₹${f.total.toFixed(2)}</td>
+        <td style="text-align: center;">${f.verified ? '<span class="verified">✓ Yes</span>' : '<span class="pending">✗ No</span>'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${reportTitle}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #111827;
+            margin: 40px;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .header {
+            border-bottom: 2px solid #E10600;
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+          }
+          .logo {
+            font-size: 20px;
+            font-weight: bold;
+            color: #E10600;
+          }
+          .title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            background: #F9FAFB;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #E5E7EB;
+          }
+          .meta-block h3 {
+            margin: 0 0 5px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6B7280;
+            letter-spacing: 0.5px;
+          }
+          .meta-block p {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+          }
+          th {
+            background-color: #F3F4F6;
+            color: #374151;
+            font-weight: 600;
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 2px solid #D1D5DB;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+          }
+          td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #E5E7EB;
+            font-size: 11px;
+          }
+          tr:nth-child(even) {
+            background-color: #F9FAFB;
+          }
+          .summary-row {
+            background-color: #F3F4F6 !important;
+            font-weight: bold;
+          }
+          .summary-row td {
+            border-top: 2px solid #D1D5DB;
+            border-bottom: 2px solid #D1D5DB;
+            font-size: 12px;
+          }
+          .verified {
+            color: #166534;
+            background-color: #DCFCE7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+          }
+          .pending {
+            color: #991B1B;
+            background-color: #FEE2E2;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+          }
+          .signature-section {
+            margin-top: 50px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+          }
+          .sig-box {
+            width: 45%;
+            border-top: 1px solid #9CA3AF;
+            padding-top: 8px;
+            text-align: center;
+            color: #4B5563;
+            font-size: 11px;
+          }
+          @media print {
+            body { margin: 20px; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="logo">CNG Fuel Tracker</span>
+            <span style="color: #6B7280;">Date Generated: ${new Date().toLocaleDateString()}</span>
+          </div>
+          <div class="title">${reportTitle}</div>
+        </div>
+
+        <div class="meta-info">
+          <div class="meta-block">
+            <h3>Fleet Owner</h3>
+            <p>${owner?.business || owner?.name || 'N/A'}</p>
+          </div>
+          <div class="meta-block">
+            <h3>Date Range</h3>
+            <p>${filterInfo.range}</p>
+          </div>
+          <div class="meta-block">
+            <h3>Vehicle Filter</h3>
+            <p>${filterInfo.vehicle}</p>
+          </div>
+          <div class="meta-block">
+            <h3>Driver Filter</h3>
+            <p>${filterInfo.driver}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Date & Time</th>
+              <th>Vehicle</th>
+              <th>Driver</th>
+              <th>Station</th>
+              <th style="text-align: right;">KGs</th>
+              <th style="text-align: right;">Rate</th>
+              <th style="text-align: right;">Total</th>
+              <th style="text-align: center;">Verified</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            <tr class="summary-row">
+              <td colspan="4">TOTALS</td>
+              <td style="text-align: right;">${totalKgs.toFixed(2)} kg</td>
+              <td>—</td>
+              <td style="text-align: right;">₹${totalCost.toFixed(2)}</td>
+              <td style="text-align: center;">${filteredFills.length} fills</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="signature-section">
+          <div class="sig-box">
+            Owner Signature
+          </div>
+          <div class="sig-box">
+            Verified Date & Reviewer Name
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const filteredFillsForReports = fills.filter(f => {
+    const fillDate = new Date(f.time)
+    const now = new Date()
+    if (reportRange === 'weekly') {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(now.getDate() - 7)
+      if (fillDate < sevenDaysAgo) return false
+    } else if (reportRange === 'monthly') {
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(now.getDate() - 30)
+      if (fillDate < thirtyDaysAgo) return false
+    }
+    
+    if (reportVehicle !== 'all') {
+      const targetVehicle = vehicles.find(v => String(v.id) === reportVehicle || v.plate === reportVehicle)
+      if (!targetVehicle) return false
+      const fillVehicleIdStr = String(f.vehicleId).toLowerCase().trim()
+      const targetIdStr = String(targetVehicle.id).toLowerCase().trim()
+      const targetPlateStr = String(targetVehicle.plate).toLowerCase().trim()
+      if (fillVehicleIdStr !== targetIdStr && fillVehicleIdStr !== targetPlateStr) {
+        return false
+      }
+    }
+    
+    if (reportDriver !== 'all') {
+      const targetDriver = drivers.find(d => String(d.id) === reportDriver)
+      if (!targetDriver) return false
+      const fillDriverIdStr = String(f.driverId).toLowerCase().trim()
+      const targetIdStr = String(targetDriver.id).toLowerCase().trim()
+      const targetNameStr = String(targetDriver.name).toLowerCase().trim()
+      if (fillDriverIdStr !== targetIdStr && fillDriverIdStr !== targetNameStr) {
+        return false
+      }
+    }
+    
+    return true
+  }).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
 
   return (
     <div className="min-h-screen bg-[#F5F6F8]">
@@ -2503,6 +2829,205 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
               })()}
             </div>
           )}
+
+          {/* REPORTS & EXPORT TAB */}
+          {tab === 'reports' && (() => {
+            const handleExportCSV = () => {
+              const fn = `cng_fills_${reportRange}_${Date.now()}.csv`;
+              const headers = ['Date & Time', 'Vehicle', 'Driver', 'Station', 'KGs', 'Rate (₹)', 'Total (₹)', 'Verified'];
+              
+              const lookupVehicle = (id: string) => {
+                const v = vehicles.find(veh => String(veh.id) === String(id) || veh.plate === id);
+                return v ? v.plate : id;
+              };
+              const lookupDriver = (id: string) => {
+                const d = drivers.find(drv => String(drv.id) === String(id));
+                return d ? d.name : id;
+              };
+
+              const rows = filteredFillsForReports.map(f => [
+                new Date(f.time).toLocaleString(),
+                lookupVehicle(f.vehicleId),
+                lookupDriver(f.driverId),
+                f.station,
+                f.kgs,
+                f.rate,
+                f.total,
+                f.verified ? 'Yes' : 'No'
+              ]);
+              
+              exportToCSV(fn, headers, rows);
+            };
+
+            const handleExportPDF = () => {
+              const rangeText = reportRange === 'weekly' ? 'Weekly (Last 7 Days)' : reportRange === 'monthly' ? 'Monthly (Last 30 Days)' : 'All Time';
+              
+              const selectedVehObj = vehicles.find(v => String(v.id) === reportVehicle || v.plate === reportVehicle);
+              const vehText = selectedVehObj ? selectedVehObj.plate : 'All Vehicles';
+              
+              const selectedDrvObj = drivers.find(d => String(d.id) === reportDriver);
+              const drvText = selectedDrvObj ? selectedDrvObj.name : 'All Drivers';
+
+              exportToPDF('CNG Fuel Fills Report', filteredFillsForReports, {
+                range: rangeText,
+                vehicle: vehText,
+                driver: drvText
+              });
+            };
+
+            return (
+              <div className="space-y-4">
+                {/* Reports Dashboard Title */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-xl border border-[#E2E6EB]">
+                  <div>
+                    <h2 className="text-[16px] font-bold text-[#111827]">Reports & Export</h2>
+                    <p className="text-[12px] text-[#6B7280]">Select date range and filters to export fuel fills</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button 
+                      onClick={handleExportCSV}
+                      disabled={filteredFillsForReports.length === 0}
+                      className="h-10 px-4 rounded-lg bg-[#166534] text-white text-[12px] font-medium hover:bg-[#14532D] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>📥</span> Export Excel
+                    </button>
+                    <button 
+                      onClick={handleExportPDF}
+                      disabled={filteredFillsForReports.length === 0}
+                      className="h-10 px-4 rounded-lg bg-[#E10600] text-white text-[12px] font-medium hover:bg-[#B91C1C] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>📄</span> Export PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters Card */}
+                <div className="p-4 rounded-xl bg-white border border-[#E2E6EB] space-y-4">
+                  <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider">Configure Report</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium text-[#4B5563]">Time Range</label>
+                      <select 
+                        value={reportRange} 
+                        onChange={e => setReportRange(e.target.value as any)}
+                        className="h-10 px-3 bg-[#F5F6F8] border border-[#E2E6EB] rounded-lg text-[12px] focus:outline-none focus:border-[#E10600]"
+                      >
+                        <option value="weekly">Weekly (Last 7 Days)</option>
+                        <option value="monthly">Monthly (Last 30 Days)</option>
+                        <option value="all">All Time</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium text-[#4B5563]">Filter by Vehicle</label>
+                      <select 
+                        value={reportVehicle} 
+                        onChange={e => setReportVehicle(e.target.value)}
+                        className="h-10 px-3 bg-[#F5F6F8] border border-[#E2E6EB] rounded-lg text-[12px] focus:outline-none focus:border-[#E10600]"
+                      >
+                        <option value="all">All Vehicles</option>
+                        {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium text-[#4B5563]">Filter by Driver</label>
+                      <select 
+                        value={reportDriver} 
+                        onChange={e => setReportDriver(e.target.value)}
+                        className="h-10 px-3 bg-[#F5F6F8] border border-[#E2E6EB] rounded-lg text-[12px] focus:outline-none focus:border-[#E10600]"
+                      >
+                        <option value="all">All Drivers</option>
+                        {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selection Summary KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-3.5 rounded-xl bg-white border border-[#E2E6EB]">
+                    <p className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Total Cost</p>
+                    <p className="text-[16px] sm:text-[18px] font-bold text-[#111827] mt-1">
+                      ₹{filteredFillsForReports.reduce((s, f) => s + f.total, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-[#E2E6EB]">
+                    <p className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Total Fuel</p>
+                    <p className="text-[16px] sm:text-[18px] font-bold text-[#1E40AF] mt-1">
+                      {filteredFillsForReports.reduce((s, f) => s + f.kgs, 0).toFixed(1)} kg
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-[#E2E6EB]">
+                    <p className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Avg Rate</p>
+                    <p className="text-[16px] sm:text-[18px] font-bold text-[#92400E] mt-1">
+                      ₹{(() => {
+                        const totalKgs = filteredFillsForReports.reduce((s, f) => s + f.kgs, 0);
+                        const totalCost = filteredFillsForReports.reduce((s, f) => s + f.total, 0);
+                        return totalKgs > 0 ? (totalCost / totalKgs).toFixed(2) : '0.00';
+                      })()}/kg
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-[#E2E6EB]">
+                    <p className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Fills Count</p>
+                    <p className="text-[16px] sm:text-[18px] font-bold text-[#166534] mt-1">
+                      {filteredFillsForReports.length}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Data Table Preview */}
+                <div className="bg-white rounded-xl border border-[#E2E6EB] overflow-hidden">
+                  <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider px-4 py-3 border-b border-[#E2E6EB]">
+                    Report Preview ({filteredFillsForReports.length} bills matched)
+                  </p>
+                  <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-[11px] sm:text-[12px]">
+                      <thead className="bg-[#F9FAFB] text-[#374151] font-semibold sticky top-0 z-10 border-b border-[#E2E6EB]">
+                        <tr>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Vehicle</th>
+                          <th className="p-3">Driver</th>
+                          <th className="p-3">Station</th>
+                          <th className="p-3 text-right">KGs</th>
+                          <th className="p-3 text-right">Rate</th>
+                          <th className="p-3 text-right font-bold">Total</th>
+                          <th className="p-3 text-center">Verified</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E6EB] text-[#111827]">
+                        {filteredFillsForReports.map(f => {
+                          const v = vehicles.find(veh => String(veh.id) === String(f.vehicleId) || veh.plate === f.vehicleId);
+                          const d = drivers.find(drv => String(drv.id) === String(f.driverId));
+                          return (
+                            <tr key={f.id} className="hover:bg-[#F9FAFB]">
+                              <td className="p-3 whitespace-nowrap">{new Date(f.time).toLocaleDateString()}</td>
+                              <td className="p-3 font-mono">{v?.plate || f.vehicleId}</td>
+                              <td className="p-3">{d?.name || f.driverId}</td>
+                              <td className="p-3 truncate max-w-[120px]">{f.station}</td>
+                              <td className="p-3 text-right">{f.kgs.toFixed(2)}</td>
+                              <td className="p-3 text-right">₹{f.rate.toFixed(2)}</td>
+                              <td className="p-3 text-right font-bold">₹{f.total.toFixed(2)}</td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${f.verified ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEE2E2] text-[#991B1B]'}`}>
+                                  {f.verified ? 'Yes' : 'No'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredFillsForReports.length === 0 && (
+                          <tr>
+                            <td colSpan={8} className="p-8 text-center text-[#6B7280]">
+                              No fills match the selected range and filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Building2, Mail, Phone, Lock, User, CheckCircle2, AlertCircle } from 'lucide-react'
 import { storage } from '../lib/storage'
@@ -25,6 +25,16 @@ export function OwnerRegister({ lang, setView, setSession }: {
   const [otpLoading, setOtpLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  
+  const timerRef = useRef<any>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
+    }
+  }, [])
 
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {}
@@ -45,11 +55,15 @@ export function OwnerRegister({ lang, setView, setSession }: {
   }
 
   const startResendTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
     setResendTimer(60)
-    const interval = setInterval(() => {
+    timerRef.current = setInterval(() => {
       setResendTimer(prev => {
         if (prev <= 1) {
-          clearInterval(interval)
+          if (timerRef.current) clearInterval(timerRef.current)
+          timerRef.current = null
           return 0
         }
         return prev - 1

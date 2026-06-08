@@ -205,6 +205,14 @@ export const storage = {
 
   getSettings: (): Record<string, any> => safeParse<Record<string, any>>(localStorage.getItem(KEYS.SETTINGS), {}),
   saveSettings: (s: Record<string, any>) => localStorage.setItem(KEYS.SETTINGS, JSON.stringify(s)),
+  getClientId: (): string => {
+    let id = localStorage.getItem('cng_client_id')
+    if (!id) {
+      id = 'client_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+      localStorage.setItem('cng_client_id', id)
+    }
+    return id
+  },
 }
 
 function parseGPS(v: any): {lat: number; lng: number} | null {
