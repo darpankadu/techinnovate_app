@@ -1794,11 +1794,20 @@ function OwnerDashboard({ lang, session, syncKey, loadData }: { lang: Language; 
   
   // Now get fills for these vehicles and drivers
   const vehicleIds = vehicles.map(v => String(v.id))
+  const vehiclePlates = vehicles.map(v => String(v.plate || '').trim().toLowerCase())
   const driverIds = drivers.map(d => String(d.id))
   const allFills = storage.getFills()
   console.log('[OwnerDashboard] All fills:', allFills.length)
   console.log('[OwnerDashboard] Sample fills:', allFills.slice(0, 3).map(f => ({ id: f.id, vehicleId: f.vehicleId, driverId: f.driverId })))
-  const fills = allFills.filter(f => String(f.ownerId) === ownerIdStr || vehicleIds.includes(String(f.vehicleId)) || driverIds.includes(String(f.driverId)))
+  const fills = allFills.filter(f => {
+    const fOwnerId = String(f.ownerId || '').trim()
+    const fVehicleId = String(f.vehicleId || '').trim().toLowerCase()
+    const fDriverId = String(f.driverId || '').trim()
+    return fOwnerId === ownerIdStr || 
+           vehicleIds.includes(fVehicleId) || 
+           vehiclePlates.includes(fVehicleId) || 
+           driverIds.includes(fDriverId)
+  })
   console.log('[OwnerDashboard] Fills for owner:', fills.length, 'by', vehicleIds.length, 'vehicles and', driverIds.length, 'drivers')
   
   // BUG-017 FIX: alerts store driver NAME in .user field (set during fill submit via session.name)
@@ -3601,9 +3610,21 @@ function AdminDashboard({ lang, syncKey, syncStatus, loadData }: { lang: Languag
   const fraudAlerts = alerts.filter(a => !a.resolved)
 
   const getOwnerStats = (ownerId: string) => {
-    const oDrivers = drivers.filter(d => d.ownerId === ownerId)
-    const oVehicles = vehicles.filter(v => v.ownerId === ownerId)
-    const oFills = fills.filter(f => oVehicles.some(v => v.id === f.vehicleId) || f.ownerId === ownerId)
+    const oDrivers = drivers.filter(d => String(d.ownerId) === String(ownerId))
+    const oVehicles = vehicles.filter(v => String(v.ownerId) === String(ownerId))
+    const vehicleIds = oVehicles.map(v => String(v.id))
+    const vehiclePlates = oVehicles.map(v => String(v.plate || '').trim().toLowerCase())
+    const driverIds = oDrivers.map(d => String(d.id))
+    
+    const oFills = fills.filter(f => {
+      const fOwnerId = String(f.ownerId || '').trim()
+      const fVehicleId = String(f.vehicleId || '').trim().toLowerCase()
+      const fDriverId = String(f.driverId || '').trim()
+      return fOwnerId === String(ownerId) || 
+             vehicleIds.includes(fVehicleId) || 
+             vehiclePlates.includes(fVehicleId) || 
+             driverIds.includes(fDriverId)
+    })
     const owner = owners.find(o => o.id === ownerId)
     const paid = owner?.totalPaid || 0
     const used = oFills.reduce((s, f) => s + f.total, 0)
