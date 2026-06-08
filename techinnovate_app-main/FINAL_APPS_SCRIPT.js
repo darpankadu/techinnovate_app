@@ -389,6 +389,74 @@ function fixExistingShiftedOwners(ss) {
   Logger.log('Automatic fix completed. Fixed ' + fixedCount + ' rows.');
 }
 
+function recalculateAllOwnersCredit(ss) {
+  const ownerSheet = ss.getSheetByName('Owners');
+  const fillsSheet = ss.getSheetByName('Fills');
+  const paymentsSheet = ss.getSheetByName('PaymentEntries');
+  
+  if (!ownerSheet) return;
+  
+  const ownerValues = ownerSheet.getDataRange().getValues();
+  const ownerHeaders = ownerValues[0];
+  const ownerIdIdx = findColumnIndex(ownerHeaders, 'id');
+  const creditUsedIdx = findColumnIndex(ownerHeaders, 'creditUsed');
+  const totalPaidIdx = findColumnIndex(ownerHeaders, 'totalPaid');
+  
+  if (ownerIdIdx === -1 || creditUsedIdx === -1) return;
+  
+  // 1. Sum fills by ownerId
+  const fillsMap = {};
+  if (fillsSheet) {
+    const fillsValues = fillsSheet.getDataRange().getValues();
+    const fillsHeaders = fillsValues[0];
+    const fillOwnerIdx = findColumnIndex(fillsHeaders, 'ownerId');
+    const fillTotalIdx = findColumnIndex(fillsHeaders, 'total');
+    if (fillOwnerIdx >= 0 && fillTotalIdx >= 0) {
+      for (let i = 1; i < fillsValues.length; i++) {
+        const ownerId = String(fillsValues[i][fillOwnerIdx]).trim();
+        const total = parseFloat(fillsValues[i][fillTotalIdx]) || 0;
+        fillsMap[ownerId] = (fillsMap[ownerId] || 0) + total;
+      }
+    }
+  }
+  
+  // 2. Sum payments by ownerId
+  const paymentsMap = {};
+  if (paymentsSheet) {
+    const paymentsValues = paymentsSheet.getDataRange().getValues();
+    const paymentsHeaders = paymentsValues[0];
+    const payOwnerIdx = findColumnIndex(paymentsHeaders, 'ownerId');
+    const payAmountIdx = findColumnIndex(paymentsHeaders, 'amount');
+    if (payOwnerIdx >= 0 && payAmountIdx >= 0) {
+      for (let i = 1; i < paymentsValues.length; i++) {
+        const ownerId = String(paymentsValues[i][payOwnerIdx]).trim();
+        const amount = parseFloat(paymentsValues[i][payAmountIdx]) || 0;
+        paymentsMap[ownerId] = (paymentsMap[ownerId] || 0) + amount;
+      }
+    }
+  }
+  
+  // 3. Update all owners in the sheet (only write if value is different)
+  for (let i = 1; i < ownerValues.length; i++) {
+    const ownerId = String(ownerValues[i][ownerIdIdx]).trim();
+    if (ownerId === '') continue;
+    
+    const totalSpent = fillsMap[ownerId] || 0;
+    const totalPaid = paymentsMap[ownerId] || 0;
+    const creditUsed = totalSpent - totalPaid;
+    
+    const currentCreditUsed = parseFloat(ownerValues[i][creditUsedIdx]) || 0;
+    const currentTotalPaid = totalPaidIdx >= 0 ? (parseFloat(ownerValues[i][totalPaidIdx]) || 0) : 0;
+    
+    if (Math.abs(currentCreditUsed - creditUsed) > 0.01) {
+      ownerSheet.getRange(i + 1, creditUsedIdx + 1).setValue(creditUsed);
+    }
+    if (totalPaidIdx >= 0 && Math.abs(currentTotalPaid - totalPaid) > 0.01) {
+      ownerSheet.getRange(i + 1, totalPaidIdx + 1).setValue(totalPaid);
+    }
+  }
+}
+
 // ============= MAIN API =============
 function doPost(e) {
   try {
@@ -577,6 +645,13 @@ function handleAddFill(data, SHEET_ID) {
     }
   }
   
+  // Recalculate and update owner credits automatically
+  try {
+    recalculateAllOwnersCredit(ss);
+  } catch (err) {
+    Logger.log('Error recalculating owner credits in handleAddFill: ' + err);
+  }
+  
   return json({ success: true, id: data.id });
 }
 
@@ -676,6 +751,13 @@ function handleAddPaymentEntry(data, SHEET_ID) {
         break;
       }
     }
+  }
+  
+  // Recalculate and update owner credits automatically
+  try {
+    recalculateAllOwnersCredit(ss);
+  } catch (err) {
+    Logger.log('Error recalculating owner credits in handleAddPaymentEntry: ' + err);
   }
   
   return json({ success: true, id: paymentId });
@@ -1486,6 +1568,13 @@ function handleDeleteVehicle(data, SHEET_ID) {
 // ============= GET ALL DATA =============
 function handleGetData(SHEET_ID) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
+  
+  // Recalculate and update owner credits automatically
+  try {
+    recalculateAllOwnersCredit(ss);
+  } catch (err) {
+    Logger.log('Error recalculating owner credits in handleGetData: ' + err);
+  }
   
   const parseValue = (val) => {
     if (val === 'true') return true;
