@@ -31,3 +31,7 @@ dist-ssr
 !.dev.vars.example
 .env*
 !.env.example
+
+# local mcp settings
+.mcp.json
+*.mcp.json
