@@ -112,8 +112,7 @@ export function OwnerRegister({ lang, setView, setSession }: {
 
   const handleNext = async () => {
     if (step === 1 && validateStep1()) {
-      // Skip email OTP verification step, proceed directly to password setup
-      setStep(3)
+      await handleSendOTP()
     }
   }
 

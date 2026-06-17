@@ -10,11 +10,17 @@ export const googleSync = {
   async post(payload: any): Promise<any> {
     if (!this.enabled) return { success: false, error: 'Sync disabled' }
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'text/plain;charset=utf-8' };
+      const token = sessionStorage.getItem('cng_jwt_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         mode: 'cors',
         redirect: 'follow',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers,
         body: JSON.stringify({
           clientId: storage.getClientId(),
           ...payload
@@ -28,31 +34,48 @@ export const googleSync = {
     }
   },
 
-  async uploadMedia(blob: Blob, fileName: string, folderName: string): Promise<string> {
-    const localUrl = await blobToBase64(blob)
-    if (!this.enabled) return localUrl
+  async uploadMedia(blobOrBase64: Blob | string, fileName: string, folderName: string): Promise<string> {
+    if (!this.enabled) {
+      if (typeof blobOrBase64 === 'string') return blobOrBase64;
+      return await blobToBase64(blobOrBase64);
+    }
 
     try {
-      const base64Data = localUrl.split(',')[1] || localUrl
-      const parts = folderName.split('_')
-      const vehiclePlate = parts.slice(0, -1).join('_') || parts[0] || 'Unassigned'
-      const fillDate = parts[parts.length - 1] || new Date().toISOString().split('T')[0]
+      let base64Data = '';
+      let mimeType = 'image/jpeg';
+
+      if (typeof blobOrBase64 === 'string') {
+        base64Data = blobOrBase64.split(',')[1] || blobOrBase64;
+        const mimeMatch = blobOrBase64.match(/^data:(.*?);base64,/);
+        if (mimeMatch) mimeType = mimeMatch[1];
+      } else {
+        const localUrl = await blobToBase64(blobOrBase64);
+        base64Data = localUrl.split(',')[1] || localUrl;
+        mimeType = blobOrBase64.type || 'image/jpeg';
+      }
+
+      const parts = folderName.split('_');
+      const vehiclePlate = parts.slice(0, -1).join('_') || parts[0] || 'Unassigned';
+      const fillDate = parts[parts.length - 1] || new Date().toISOString().split('T')[0];
 
       const result = await this.post({
         action: 'uploadMedia',
         fileName,
         vehiclePlate,
         fillDate,
-        mimeType: blob.type || 'image/jpeg',
+        mimeType,
         base64Data
-      })
+      });
 
       if (result.success && result.fileUrl) {
-        return result.fileUrl
+        return result.fileUrl;
       }
-      return localUrl
+      
+      if (typeof blobOrBase64 === 'string') return blobOrBase64;
+      return await blobToBase64(blobOrBase64);
     } catch {
-      return localUrl
+      if (typeof blobOrBase64 === 'string') return blobOrBase64;
+      return await blobToBase64(blobOrBase64);
     }
   },
 
@@ -139,14 +162,24 @@ export const googleSync = {
     return { success: result.success === true, error: result.error }
   },
 
+  async sendLoginOTP(email: string): Promise<{ success: boolean; error?: string }> {
+    const result = await this.post({ action: 'sendLoginOTP', email })
+    return { success: result.success === true, error: result.error }
+  },
+
+  async loginOwnerWithOTP(email: string, otp: string): Promise<{ success: boolean; owner?: any; token?: string; error?: string }> {
+    const result = await this.post({ action: 'loginOwnerWithOTP', email, otp })
+    return { success: result.success === true, owner: result.owner, token: result.token, error: result.error }
+  },
+
   async registerOwner(owner: any): Promise<boolean> {
     const result = await this.post({ action: 'registerOwner', ...owner })
     return result.success === true
   },
 
-  async loginOwner(email: string, password: string): Promise<{ success: boolean; owner?: any; error?: string }> {
+  async loginOwner(email: string, password: string): Promise<{ success: boolean; owner?: any; token?: string; error?: string }> {
     const result = await this.post({ action: 'loginOwner', email, password })
-    return { success: result.success === true, owner: result.owner, error: result.error }
+    return { success: result.success === true, owner: result.owner, token: result.token, error: result.error }
   },
 
   async sendResetOTP(email: string): Promise<{ success: boolean; error?: string }> {
