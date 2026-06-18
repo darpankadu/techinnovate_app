@@ -1,4 +1,4 @@
-# Techinnovate CNG Fleet Tracker
+# Techinnovate CNG Fleet Tracker 🚀
 
 A secure, offline-first fleet CNG monitoring and tracking application built with a React/Vite frontend and a Node.js/Express hybrid Firebase Firestore & Google Drive backend.
 
