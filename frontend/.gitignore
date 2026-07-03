@@ -35,3 +35,4 @@ dist-ssr
 # local mcp settings
 .mcp.json
 *.mcp.json
+.env*.local

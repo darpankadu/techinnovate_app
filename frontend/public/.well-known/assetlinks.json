@@ -2,7 +2,7 @@
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "com.vercel.twa",
-        "sha256_cert_fingerprints": ["BB:20:04:4E:EF:AE:B9:C8:97:8F:5F:B8:13:72:07:26:E8:FB:F9:68:20:EE:9C:D3:75:09:84:12:CB:1C:27:6A"]
+        "package_name": "app.vercel.cng_fleet_tracker_frontned.twa",
+        "sha256_cert_fingerprints": ["7E:23:28:6E:7E:2F:A6:8F:7F:9D:FC:F7:B2:D4:E6:99:DF:CD:B8:C5:96:EF:37:26:31:C2:AA:C0:4C:EB:91:3D"]
       }
     }]
