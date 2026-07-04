@@ -11,8 +11,6 @@ const config: CapacitorConfig = {
   },
   server: {
     androidScheme: 'https',
-    url: 'https://cng-fleet-tracker-frontned.vercel.app',
-    cleartext: true
   },
 };
 

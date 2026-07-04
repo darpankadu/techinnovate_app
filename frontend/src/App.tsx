@@ -9,6 +9,7 @@ import {
   Eye, EyeOff
 } from 'lucide-react'
 import { storage, calculateDistance } from './lib/storage'
+import { seedDemoData } from './lib/seedDemo'
 import { firestoreSync, BACKEND_API_URL } from './lib/firestoreSync'
 import { t } from './lib/translations'
 import type { Language, Role, Driver, Owner, Vehicle, Fill, Alert, CameraCapture, CreditAction, PaymentEntry } from './lib/types'
@@ -131,9 +132,18 @@ export default function App() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+
+    // DEV ONLY: seed demo accounts for offline testing — http://localhost:5177/?seed=demo
+    // Stripped from production builds by the DEV guard.
+    if (import.meta.env.DEV && params.get('seed') === 'demo') {
+      seedDemoData()
+      window.location.replace(window.location.origin + '/')
+      return
+    }
+
     // Secret admin entry point — not linked anywhere in the app UI.
     // Access via a private URL only: https://yourapp.com/?portal=techadmin2026
-    const params = new URLSearchParams(window.location.search)
     if (params.get('portal') === 'techadmin2026') {
       setView('admin-login')
       setLoading(false)
@@ -513,7 +523,7 @@ function WelcomeView({ lang, setView }: { lang: Language; setView: (v: View) => 
 
         <motion.button whileTap={{ scale: 0.97 }} onClick={() => setView('driver-login')} className="w-full mb-3">
           <div className="flex items-center gap-4 p-4 rounded-2xl text-white shadow-lg active:scale-[0.98] transition-transform"
-            style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 60%, #ff3a00 100%)', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}>
+            style={{ background: '#E10600', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}>
             <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
               <Gauge className="w-5 h-5 text-white" />
             </div>
@@ -533,7 +543,7 @@ function WelcomeView({ lang, setView }: { lang: Language; setView: (v: View) => 
 
         <motion.button whileTap={{ scale: 0.97 }} onClick={() => setView('owner-login')} className="w-full mb-3">
           <div className="flex items-center gap-4 p-4 rounded-2xl text-white shadow-lg active:scale-[0.98] transition-transform"
-            style={{ background: 'linear-gradient(135deg, #0b1220 0%, #111827 60%, #1f2b45 100%)', boxShadow: '0 8px 24px rgba(17,24,39,0.3)' }}>
+            style={{ background: '#111827', boxShadow: '0 8px 24px rgba(17,24,39,0.3)' }}>
             <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
               <BarChart3 className="w-5 h-5 text-white" />
             </div>
@@ -753,7 +763,7 @@ function DriverLogin({ lang, setView, setSession }: { lang: Language; setView: (
           className="w-full h-14 text-white font-black text-base rounded-2xl transition-all active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
           style={{
             fontFamily: "'Archivo', sans-serif",
-            background: 'linear-gradient(135deg, #c20000 0%, #E10600 100%)',
+            background: '#E10600',
             color: 'white',
             boxShadow: '0 4px 16px rgba(225,6,0,0.3)'
           }}
@@ -783,6 +793,7 @@ function DriverSignup({ lang, setView, setSession }: { lang: Language; setView: 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
+  const [devOtp, setDevOtp] = useState('')   // DEV builds only: on-screen code when backend is unreachable
   const timerRef = useRef<any>(null)
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
@@ -814,16 +825,30 @@ function DriverSignup({ lang, setView, setSession }: { lang: Language; setView: 
     if (existing.some((d: any) => (d.email || '').toLowerCase() === cleanEmail)) {
       setError(tx('An account with this email already exists', 'इस ईमेल से खाता पहले से मौजूद है', 'આ ઇમેઇલ સાથે એકાઉન્ટ પહેલેથી અસ્તિત્વમાં છે')); return
     }
+    // DEV builds only: backend unreachable → generate an on-screen code so the flow stays testable.
+    // Production builds always require the real verification email.
+    const tryDevFallback = (): boolean => {
+      if (!import.meta.env.DEV) return false
+      const code = String(Math.floor(100000 + Math.random() * 900000))
+      setDevOtp(code)
+      startResendTimer()
+      setStep(2)
+      return true
+    }
+
     setLoading(true)
     try {
       const res = await firestoreSync.sendOTP(cleanEmail)
       if (res.success) {
+        setDevOtp('')
         startResendTimer()
         setStep(2)
       } else {
+        if ((res as any).offline && tryDevFallback()) return
         setError(res.error || tx('Could not send verification email. Try again.', 'सत्यापन ईमेल नहीं भेजा जा सका। पुनः प्रयास करें।', 'ચકાસણી ઇમેઇલ મોકલી શકાયો નથી. ફરી પ્રયાસ કરો.'))
       }
     } catch {
+      if (tryDevFallback()) return
       setError(tx('Connection failed. Check your internet.', 'कनेक्शन विफल। अपना इंटरनेट जांचें।', 'કનેક્શન નિષ્ફળ. તમારું ઇન્ટરનેટ તપાસો.'))
     } finally {
       setLoading(false)
@@ -834,6 +859,11 @@ function DriverSignup({ lang, setView, setSession }: { lang: Language; setView: 
   const handleVerifyOTP = async () => {
     setError('')
     if (otp.length !== 6) { setError(tx('Enter the 6-digit code from your email', 'अपने ईमेल से 6-अंकीय कोड दर्ज करें', 'તમારા ઇમેઇલમાંથી 6-અંકનો કોડ દાખલ કરો')); return }
+    // DEV builds only: verify against the on-screen code
+    if (import.meta.env.DEV && devOtp) {
+      if (otp === devOtp) { setStep(3) } else { setError(tx('Invalid or expired code', 'अमान्य या समाप्त कोड', 'અમાન્ય અથવા સમાપ્ત કોડ')) }
+      return
+    }
     setLoading(true)
     try {
       const res = await firestoreSync.verifyOTP(sanitizeInput(email).toLowerCase(), otp)
@@ -932,6 +962,12 @@ function DriverSignup({ lang, setView, setSession }: { lang: Language; setView: 
               <p className="text-[13px] text-[#B91C1C] font-medium">{tx('Verification code sent to', 'सत्यापन कोड भेजा गया', 'ચકાસણી કોડ મોકલવામાં આવ્યો')}</p>
               <p className="text-[13px] text-[#991B1B] font-bold">{email}</p>
             </div>
+            {import.meta.env.DEV && devOtp && (
+              <div className="bg-[#FEF3C7] border border-[#FCD34D] rounded-xl p-3 text-center">
+                <p className="text-[11px] text-[#92400E] font-bold uppercase tracking-wide">Dev mode — backend offline</p>
+                <p className="text-[18px] text-[#92400E] font-black font-mono tracking-[0.3em] mt-1">{devOtp}</p>
+              </div>
+            )}
             <input type="text" inputMode="numeric" maxLength={6} value={otp} autoFocus
               onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
               onKeyDown={e => e.key === 'Enter' && handleVerifyOTP()}
@@ -1033,22 +1069,42 @@ function OwnerLogin({ lang, setView, setSession }: { lang: Language; setView: (v
       setError(t('emailPassRequired', lang))
       return
     }
+    // Local fallback — backend unreachable: verify credentials against locally stored owner record.
+    // Real credential check (email + password must match); OTP is skipped because email cannot be sent offline.
+    const tryLocalLogin = (): boolean => {
+      const owners = storage.getOwners()
+      const match = owners.find((o: any) =>
+        (o.email || '').toLowerCase() === cleanEmail && o.password === cleanPassword
+      )
+      if (match) {
+        const sessionObj = { role: 'owner' as Role, userId: match.id, ownerId: match.id, name: match.name }
+        storage.setSession(sessionObj)
+        setSession(sessionObj)
+        setView('owner-dash')
+        return true
+      }
+      return false
+    }
+
     setLoading(true)
     setError('')
     try {
       const credRes = await firestoreSync.loginOwner(cleanEmail, cleanPassword)
       if (!credRes.success) {
+        if ((credRes as any).offline && tryLocalLogin()) return
         setError(credRes.error || t('invalidCredentials', lang))
         return
       }
       const otpRes = await firestoreSync.sendLoginOTP(cleanEmail)
       if (!otpRes.success) {
+        if ((otpRes as any).offline && tryLocalLogin()) return
         setError(otpRes.error || t('failedSendOtp', lang))
         return
       }
       startResendTimer()
       setStep(2)
     } catch (e: any) {
+      if (tryLocalLogin()) return
       setError(t('login', lang) + ' error: ' + e.toString())
     } finally {
       setLoading(false)
@@ -1250,6 +1306,24 @@ function AdminLogin({ lang, setView, setSession }: { lang: Language; setView: (v
       setError(t('emailPassRequired', lang))
       return
     }
+    // Local fallback — backend unreachable: verify against locally stored admin record (seeded in dev)
+    const tryLocalAdminLogin = (): boolean => {
+      try {
+        const admins = JSON.parse(localStorage.getItem('cng_admins') || '[]')
+        const match = admins.find((a: any) =>
+          (a.email || '').toLowerCase() === cleanEmail && a.password === cleanPassword
+        )
+        if (match) {
+          const sessionObj = { role: 'admin' as Role, userId: match.id, ownerId: 'admin', name: match.name }
+          storage.setSession(sessionObj)
+          setSession(sessionObj)
+          setView('admin-dash')
+          return true
+        }
+      } catch {}
+      return false
+    }
+
     setLoading(true)
     setError('')
     try {
@@ -1263,9 +1337,11 @@ function AdminLogin({ lang, setView, setSession }: { lang: Language; setView: (v
         setSession(sessionObj)
         setView('admin-dash')
       } else {
+        if ((res as any).offline && tryLocalAdminLogin()) return
         setError(res.error || t('invalidAdminCredentials', lang))
       }
     } catch (err) {
+      if (tryLocalAdminLogin()) return
       setError(t('connectionFailed', lang))
     } finally {
       setLoading(false)

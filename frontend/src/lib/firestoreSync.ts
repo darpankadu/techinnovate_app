@@ -43,7 +43,7 @@ export const firestoreSync = {
 
     // Check if browser is offline before attempting network request
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return { success: false, error: getOfflineErrorMessage() }
+      return { success: false, error: getOfflineErrorMessage(), offline: true }
     }
 
     try {
@@ -221,9 +221,9 @@ export const firestoreSync = {
     return result.success === true
   },
 
-  async sendOTP(email: string): Promise<{ success: boolean; error?: string }> {
+  async sendOTP(email: string): Promise<{ success: boolean; error?: string; offline?: boolean }> {
     const result = await this.post({ action: 'sendOTP', email })
-    return { success: result.success === true, error: result.error }
+    return { success: result.success === true, error: result.error, offline: result.offline }
   },
 
   async verifyOTP(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
@@ -231,9 +231,9 @@ export const firestoreSync = {
     return { success: result.success === true, error: result.error }
   },
 
-  async sendLoginOTP(email: string): Promise<{ success: boolean; error?: string }> {
+  async sendLoginOTP(email: string): Promise<{ success: boolean; error?: string; offline?: boolean }> {
     const result = await this.post({ action: 'sendLoginOTP', email })
-    return { success: result.success === true, error: result.error }
+    return { success: result.success === true, error: result.error, offline: result.offline }
   },
 
   async loginOwnerWithOTP(email: string, otp: string): Promise<{ success: boolean; owner?: any; token?: string; error?: string }> {
@@ -246,9 +246,9 @@ export const firestoreSync = {
     return { success: result.success === true, id: result.id, error: result.error }
   },
 
-  async loginOwner(email: string, password: string): Promise<{ success: boolean; owner?: any; token?: string; error?: string }> {
+  async loginOwner(email: string, password: string): Promise<{ success: boolean; owner?: any; token?: string; error?: string; offline?: boolean }> {
     const result = await this.post({ action: 'loginOwner', email, password })
-    return { success: result.success === true, owner: result.owner, token: result.token, error: result.error }
+    return { success: result.success === true, owner: result.owner, token: result.token, error: result.error, offline: result.offline }
   },
 
   async loginDriver(code: string): Promise<{ success: boolean; driver?: any; token?: string; error?: string }> {
@@ -256,9 +256,9 @@ export const firestoreSync = {
     return { success: result.success === true, driver: result.driver, token: result.token, error: result.error }
   },
 
-  async loginAdmin(email: string, password: string): Promise<{ success: boolean; admin?: any; token?: string; error?: string }> {
+  async loginAdmin(email: string, password: string): Promise<{ success: boolean; admin?: any; token?: string; error?: string; offline?: boolean }> {
     const result = await this.post({ action: 'loginAdmin', email, password })
-    return { success: result.success === true, admin: result.admin, token: result.token, error: result.error }
+    return { success: result.success === true, admin: result.admin, token: result.token, error: result.error, offline: result.offline }
   },
 
   async sendResetOTP(email: string): Promise<{ success: boolean; error?: string }> {

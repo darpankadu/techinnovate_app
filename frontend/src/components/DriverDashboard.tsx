@@ -305,7 +305,7 @@ function TempoRequirementDetailSheet({
         
         {/* Visual Header */}
         <div className="h-28 relative flex flex-col justify-center px-6 mx-4 rounded-2xl overflow-hidden mb-4"
-          style={{ background: `linear-gradient(135deg, ${driverImageColor}20, ${driverImageColor}08)` }}>
+          style={{ background: `${driverImageColor}15` }}>
           <button
             onClick={onClose}
             className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-[#111827] shadow-sm z-10"
@@ -497,7 +497,7 @@ function LoadDetailSheet({
 
         {/* Header */}
         <div className="mx-4 mt-2 mb-4 rounded-2xl px-5 py-4 relative overflow-hidden"
-          style={{ background: `linear-gradient(135deg, ${color}18, ${color}08)`, border: `1px solid ${color}25` }}>
+          style={{ background: `${color}12`, border: `1px solid ${color}25` }}>
           <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-sm">
             <X size={15} />
           </button>
@@ -662,7 +662,7 @@ function RedeemSheet({
         {/* Hero Savings Card */}
         <div
           className="mx-4 mt-2 mb-4 rounded-3xl overflow-hidden flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #c20000 0%, #E10600 50%, #ff4500 100%)" }}
+          style={{ background: "#E10600" }}
         >
           <div className="relative px-5 pt-5 pb-6">
             {/* Dot grid texture */}
@@ -673,15 +673,6 @@ function RedeemSheet({
                 backgroundSize: "16px 16px",
               }}
             />
-            {/* Shimmer sweep */}
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.4) 50%, transparent 65%)",
-                animation: "shimmer 2.5s infinite",
-              }}
-            />
-
             {/* Main amount row */}
             <div className="relative z-10 flex items-center justify-between mb-4">
               <div>
@@ -769,7 +760,7 @@ function RedeemSheet({
                   disabled={redeemable <= 0}
                   className="w-full rounded-3xl py-4 flex items-center justify-center gap-3 shadow-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:pointer-events-none"
                   style={{
-                    background: "linear-gradient(135deg, #E10600, #ff3a36)",
+                    background: "#E10600",
                     boxShadow: "0 8px 24px rgba(225,6,0,0.35)",
                   }}
                 >
@@ -1558,7 +1549,7 @@ export function DriverDashboard({
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 100%)' }}>
+                  style={{ background: '#E10600' }}>
                   <span className="text-white font-black text-base" style={{ fontFamily: "'Archivo', sans-serif" }}>
                     {session.name?.charAt(0).toUpperCase()}
                   </span>
@@ -1586,7 +1577,7 @@ export function DriverDashboard({
                 <motion.button type="button" onClick={() => setShowRedeem(true)}
                   whileTap={{ scale: 0.88 }} transition={springTap}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-2xl focus:outline-none"
-                  style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 100%)', boxShadow: '0 4px 12px rgba(225,6,0,0.25)' }}>
+                  style={{ background: '#E10600', boxShadow: '0 4px 12px rgba(225,6,0,0.25)' }}>
                   <IndianRupee size={12} className="text-white" />
                   <div className="flex flex-col text-left leading-none">
                     <span className="text-[7px] font-black text-white/70 uppercase tracking-widest leading-none">SAVED</span>
@@ -1645,7 +1636,7 @@ export function DriverDashboard({
               <motion.button type="button" onClick={() => setShowRedeem(true)}
                 whileTap={{ scale: 0.88 }} transition={springTap}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-2xl"
-                style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 100%)', boxShadow: '0 4px 12px rgba(225,6,0,0.25)' }}>
+                style={{ background: '#E10600', boxShadow: '0 4px 12px rgba(225,6,0,0.25)' }}>
                 <IndianRupee size={12} className="text-white" />
                 <span className="text-white font-black text-xs" style={{ fontFamily: "'Archivo', sans-serif" }}>₹{totalSavingsRupees}</span>
               </motion.button>
@@ -1664,7 +1655,7 @@ export function DriverDashboard({
 
             {/* ₹5 Off Banner */}
             <motion.div variants={fadeSlideRight} className="rounded-3xl overflow-hidden mb-4 relative"
-              style={{ background: 'linear-gradient(135deg, #a80000 0%, #E10600 55%, #ff3a00 100%)', boxShadow: '0 6px 24px rgba(225,6,0,0.28)' }}>
+              style={{ background: '#E10600', boxShadow: '0 6px 24px rgba(225,6,0,0.28)' }}>
               <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'radial-gradient(circle, #fff 1.5px, transparent 1.5px)', backgroundSize: '16px 16px' }} />
               <div className="relative z-10 flex items-center gap-4 px-5 py-4">
                 <div className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center flex-shrink-0">
@@ -1695,15 +1686,15 @@ export function DriverDashboard({
                   transition={moduleTileTransition}
                   onClick={() => { setActiveModule('cng'); setActiveTab('cng'); }}
                   className="flex flex-col items-center gap-2.5 py-4 px-1 rounded-2xl relative"
-                  style={{ background: 'linear-gradient(160deg, #fff1f0 0%, #ffe4e2 100%)' }}>
+                  style={{ background: '#FDECEB' }}>
                   {activeTrip && (
                     <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                   )}
                   <div className="relative w-[60px] h-[60px] rounded-[18px] flex items-center justify-center" style={{
-                    background: 'linear-gradient(145deg, #C00000 0%, #8B0000 100%)',
+                    background: '#E10600',
                     boxShadow: '0 8px 20px rgba(176,0,0,0.42), 0 2px 4px rgba(0,0,0,0.14)',
                   }}>
-                    <div className="absolute inset-x-0 top-0 h-1/2 rounded-t-[18px]" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, transparent 100%)' }} />
+                    
                     <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="relative z-10">
                       <rect x="5" y="7" width="15" height="21" rx="3" fill="white" opacity="0.95"/>
                       <rect x="7.5" y="10" width="10" height="6" rx="1.5" fill="#C00000" opacity="0.85"/>
@@ -1728,12 +1719,12 @@ export function DriverDashboard({
                   transition={moduleTileTransition}
                   onClick={() => { setActiveModule('truck'); setActiveTab('truck'); }}
                   className="flex flex-col items-center gap-2.5 py-4 px-1 rounded-2xl relative"
-                  style={{ background: 'linear-gradient(160deg, #f1f3f6 0%, #e6e9ed 100%)' }}>
+                  style={{ background: '#EEF0F3' }}>
                   <div className="relative w-[60px] h-[60px] rounded-[18px] flex items-center justify-center" style={{
-                    background: 'linear-gradient(145deg, #1e293b 0%, #0f172a 100%)',
+                    background: '#111827',
                     boxShadow: '0 8px 20px rgba(15,23,42,0.40), 0 2px 4px rgba(0,0,0,0.16)',
                   }}>
-                    <div className="absolute inset-x-0 top-0 h-1/2 rounded-t-[18px]" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.16) 0%, transparent 100%)' }} />
+                    
                     <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="relative z-10">
                       <rect x="3" y="15" width="20" height="12" rx="2" fill="white" opacity="0.92"/>
                       <rect x="23" y="19" width="10" height="8" rx="2" fill="white" opacity="0.78"/>
@@ -1762,12 +1753,12 @@ export function DriverDashboard({
                   transition={moduleTileTransition}
                   onClick={() => { setActiveModule('load'); setActiveTab('load'); }}
                   className="flex flex-col items-center gap-2.5 py-4 px-1 rounded-2xl relative"
-                  style={{ background: 'linear-gradient(160deg, #eef2ff 0%, #e5e9ff 100%)' }}>
+                  style={{ background: '#EAEEFC' }}>
                   <div className="relative w-[60px] h-[60px] rounded-[18px] flex items-center justify-center" style={{
-                    background: 'linear-gradient(145deg, #4338ca 0%, #3730a3 100%)',
+                    background: '#4338CA',
                     boxShadow: '0 8px 20px rgba(67,56,202,0.42), 0 2px 4px rgba(0,0,0,0.12)',
                   }}>
-                    <div className="absolute inset-x-0 top-0 h-1/2 rounded-t-[18px]" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, transparent 100%)' }} />
+                    
                     <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="relative z-10">
                       <circle cx="8" cy="9.5" r="2.5" fill="rgba(255,255,255,0.75)"/>
                       <circle cx="8" cy="9.5" r="1" fill="#4338ca" opacity="0.55"/>
@@ -1905,7 +1896,7 @@ export function DriverDashboard({
                   <button
                     onClick={() => setView('wizard')}
                     className="w-full rounded-3xl py-4 flex items-center justify-between px-5 active:scale-[0.98] transition-transform"
-                    style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 60%, #ff3000 100%)', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}
+                    style={{ background: '#E10600', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-2xl bg-white/20 border border-white/20 flex items-center justify-center">
@@ -1960,7 +1951,7 @@ export function DriverDashboard({
                   <button
                     onClick={() => setTripFormMode('start')}
                     className="w-full rounded-3xl py-4 flex items-center justify-between px-5 active:scale-[0.98] transition-transform"
-                    style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 60%, #ff3000 100%)', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}
+                    style={{ background: '#E10600', boxShadow: '0 8px 24px rgba(225,6,0,0.3)' }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-2xl bg-white/20 border border-white/20 flex items-center justify-center">
@@ -2405,7 +2396,7 @@ export function DriverDashboard({
                       <p className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider mb-1">Total Spent</p>
                       <p className="text-[22px] font-black text-[#111827]">₹{totalAmt.toLocaleString()}</p>
                     </div>
-                    <div className="rounded-2xl p-4 text-center" style={{ background: 'linear-gradient(135deg, #4338ca, #3730a3)', boxShadow: '0 4px 16px rgba(67,56,202,0.3)' }}>
+                    <div className="rounded-2xl p-4 text-center" style={{ background: '#4338CA', boxShadow: '0 4px 16px rgba(67,56,202,0.3)' }}>
                       <p className="text-[10px] text-white/70 font-semibold uppercase tracking-wider mb-1">Wallet Balance</p>
                       <p className="text-[22px] font-black text-white">₹{walletBal}</p>
                     </div>
@@ -2520,7 +2511,7 @@ export function DriverDashboard({
                   <motion.div
                     layoutId="nav-active-pill"
                     className="absolute inset-0 rounded-full z-[-1]"
-                    style={{ background: 'linear-gradient(135deg, #c20000 0%, #E10600 100%)', boxShadow: '0 4px 14px rgba(225,6,0,0.35)' }}
+                    style={{ background: '#E10600', boxShadow: '0 4px 14px rgba(225,6,0,0.35)' }}
                     transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                   />
                 )}

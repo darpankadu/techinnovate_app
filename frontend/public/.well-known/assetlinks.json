@@ -2,7 +2,7 @@
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "app.vercel.cng_fleet_tracker_frontned.twa",
-        "sha256_cert_fingerprints": ["7E:23:28:6E:7E:2F:A6:8F:7F:9D:FC:F7:B2:D4:E6:99:DF:CD:B8:C5:96:EF:37:26:31:C2:AA:C0:4C:EB:91:3D"]
+        "package_name": "com.techinnovate.cngtracker",
+        "sha256_cert_fingerprints": ["D1:2C:2B:47:A1:AC:A0:67:51:2A:87:6B:AA:3C:45:40:83:A7:BD:80:2C:2D:C6:FB:E4:AD:86:1C:A1:8B:59:20"]
       }
     }]
