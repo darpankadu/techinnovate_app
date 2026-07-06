@@ -27,6 +27,7 @@ export const syncController = {
         'loginOwnerWithOTP',
         'sendLoginOTP',
         'registerOwner',
+        'registerDriver',
         'sendOTP',
         'verifyOTP',
         'sendResetOTP',
@@ -91,6 +92,8 @@ export const syncController = {
         result = await authController.handleUpdateOwner(data);
       } else if (action === 'registerOwner') {
         result = await authController.handleRegisterOwner(data);
+      } else if (action === 'registerDriver') {
+        result = await authController.handleRegisterDriver(data);
       } else if (action === 'loginOwner') {
         result = await authController.handleLoginOwner(data);
       } else if (action === 'loginDriver') {

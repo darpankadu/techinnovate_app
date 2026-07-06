@@ -452,5 +452,45 @@ export const authController = {
     } else {
       return { success: false, error: 'Invalid admin credentials.' };
     }
+  },
+
+  async handleRegisterDriver(data) {
+    const email = String(data.email || '').trim().toLowerCase();
+    const code = String(data.code || '').trim();
+    if (!email) {
+      return { success: false, error: 'Email address is required.' };
+    }
+    if (!code || !/^\d{4}$/.test(code)) {
+      return { success: false, error: 'PIN must be exactly 4 digits.' };
+    }
+
+    const drivers = await firestoreService.getCollectionData('drivers');
+    
+    // Check if email already registered
+    if (drivers.some(d => String(d.email || '').trim().toLowerCase() === email)) {
+      return { success: false, error: 'Email already registered.' };
+    }
+
+    // Check if PIN already taken
+    if (drivers.some(d => String(d.code || '').trim() === code)) {
+      return { success: false, error: 'PIN is already taken.' };
+    }
+
+    const driverId = data.id || 'd_' + Date.now();
+    const newDriverData = {
+      id: driverId,
+      name: data.name || '',
+      phone: data.phone || '',
+      email: email,
+      code: code,
+      ownerId: data.ownerId || null,
+      assignedVehicleId: data.assignedVehicleId || null,
+      selfSignup: true,
+      status: 'active',
+      createdAt: data.createdAt || new Date().toISOString()
+    };
+
+    await firestoreService.setDocument('drivers', driverId, newDriverData);
+    return { success: true, id: driverId };
   }
 };
