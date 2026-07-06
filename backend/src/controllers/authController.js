@@ -35,6 +35,25 @@ function hashPassword(password) {
   return bcrypt.hashSync(password, 10);
 }
 
+function validatePassword(password) {
+  if (!password || password.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least one lowercase letter.';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least one uppercase letter.';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'Password must contain at least one number.';
+  }
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    return 'Password must contain at least one special character.';
+  }
+  return null;
+}
+
 export const authController = {
   async handleSendOTP(data) {
     const email = (data.email || '').trim();
@@ -211,6 +230,11 @@ export const authController = {
       return { success: false, error: 'Email, verification code, and new password are required.' };
     }
 
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      return { success: false, error: passwordError };
+    }
+
     const cachedOtp = cache.get('reset_' + email);
     if (!cachedOtp) {
       return { success: false, error: 'Verification code has expired or is invalid.' };
@@ -298,7 +322,35 @@ export const authController = {
   },
 
   async handleRegisterOwner(data) {
-    const ownerId = data.id || 'own_' + Date.now();
+    const email = String(data.email || '').trim().toLowerCase();
+    if (!email) {
+      return { success: false, error: 'Email address is required.' };
+    }
+
+    const passwordError = validatePassword(data.password);
+    if (passwordError) {
+      return { success: false, error: passwordError };
+    }
+
+    // Check if email already exists
+    const owners = await firestoreService.getCollectionData('owners');
+    if (owners.some(o => String(o.email || '').trim().toLowerCase() === email)) {
+      return { success: false, error: 'Email already registered.' };
+    }
+
+    // Generate sequence-based Owner ID (e.g. own_business_001)
+    const cleanPrefix = String(data.business || '').trim().toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '') || 'owner';
+    let seq = 1;
+    owners.forEach(o => {
+      const match = String(o.id).match(new RegExp('^own_' + cleanPrefix + '_(\\d+)$'));
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num >= seq) seq = num + 1;
+      }
+    });
+    const seqStr = String(seq).padStart(3, '0');
+    const ownerId = `own_${cleanPrefix}_${seqStr}`;
+
     const hashedPassword = hashPassword(data.password);
     
     const newOwnerData = {
@@ -345,6 +397,60 @@ export const authController = {
       return { success: true };
     } catch (err) {
       return { success: false, error: 'Owner not found: ' + ownerId };
+    }
+  },
+
+  async handleLoginDriver(data) {
+    const code = String(data.code || '').trim();
+    if (!code) {
+      return { success: false, error: 'Driver code is required.' };
+    }
+
+    // Query driver directly by code (avoids collection scan)
+    const matches = await firestoreService.getCollectionDataFiltered('drivers', 'code', code);
+    const targetDriver = matches[0];
+
+    if (!targetDriver) {
+      return { success: false, error: 'Invalid driver code.' };
+    }
+
+    const statusVal = String(targetDriver.status || 'active').trim();
+    if (statusVal !== 'active') {
+      return { success: false, error: 'Driver account is not active.' };
+    }
+
+    // Generate JWT token for driver
+    const token = jwt.sign(
+      { userId: targetDriver.id, role: 'driver', ownerId: targetDriver.ownerId },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    return { success: true, driver: targetDriver, token };
+  },
+
+  async handleLoginAdmin(data) {
+    const email = String(data.email || '').trim().toLowerCase();
+    const password = String(data.password || '');
+
+    if (!email || !password) {
+      return { success: false, error: 'Email and password are required.' };
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@cng.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+    if (email === adminEmail && password === adminPassword) {
+      // Generate JWT token for admin
+      const token = jwt.sign(
+        { userId: 'admin1', role: 'admin', ownerId: 'admin' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+
+      return { success: true, admin: { id: 'admin1', name: 'Admin', email: adminEmail }, token };
+    } else {
+      return { success: false, error: 'Invalid admin credentials.' };
     }
   }
 };

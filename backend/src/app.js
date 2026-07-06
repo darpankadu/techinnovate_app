@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import routes from './routes/index.js';
+import { concurrencyLimiter, rateLimiter } from './middleware/rateLimitMiddleware.js';
 
 const app = express();
 
@@ -15,8 +16,8 @@ app.use(express.json({
   type: ['application/json', 'text/plain'] 
 }));
 
-// Register routing sub-system
-app.use('/api', routes);
+// Register routing sub-system with rate limiting and concurrency control
+app.use('/api', rateLimiter, concurrencyLimiter, routes);
 
 // Default Route
 app.get('/', (req, res) => {

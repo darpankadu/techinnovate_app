@@ -31,12 +31,17 @@ export const syncController = {
         'verifyOTP',
         'sendResetOTP',
         'resetPassword',
+        'loginDriver',
+        'loginAdmin',
         
         // Driver actions
         'addFill', 
         'uploadMedia', 
         'updateVehicleOdometer', 
-        'addAlert'
+        'addAlert',
+        'saveTrip',
+        'updateDriverLocation',
+        'deleteDriverLocation'
       ];
 
       if (!PUBLIC_ACTIONS.includes(action)) {
@@ -88,6 +93,10 @@ export const syncController = {
         result = await authController.handleRegisterOwner(data);
       } else if (action === 'loginOwner') {
         result = await authController.handleLoginOwner(data);
+      } else if (action === 'loginDriver') {
+        result = await authController.handleLoginDriver(data);
+      } else if (action === 'loginAdmin') {
+        result = await authController.handleLoginAdmin(data);
       }
       // 5. Payments
       else if (action === 'addPaymentEntry') {
@@ -123,10 +132,16 @@ export const syncController = {
       }
       // 9. Vehicles CRUD
       else if (action === 'addVehicle') {
+        const cleanPlate = (data.plate || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (!/^[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}$/.test(cleanPlate)) {
+          return res.status(400).json({ success: false, error: 'Vehicle number plate must follow Indian format (no spaces allowed): XXNNXXNNNN' });
+        }
+        const formattedPlate = cleanPlate;
+
         const vehicleId = data.id || 'veh_' + Date.now();
         const newVehicleData = {
           id: vehicleId,
-          plate: data.plate,
+          plate: formattedPlate,
           model: data.model,
           initialOdo: parseInt(data.initialOdo) || 0,
           currentOdo: parseInt(data.currentOdo) || 0,
@@ -154,12 +169,23 @@ export const syncController = {
       }
       // 10. Drivers CRUD
       else if (action === 'addDriver') {
+        const targetVehicle = data.assignedVehicleId || '';
+        if (!targetVehicle) {
+          return res.status(400).json({ success: false, error: 'Vehicle assignment is required.' });
+        }
+
+        const allDrivers = await firestoreService.getCollectionData('drivers');
+        const alreadyAssigned = allDrivers.some(d => d.assignedVehicleId === targetVehicle && d.status === 'active');
+        if (alreadyAssigned) {
+          return res.status(400).json({ success: false, error: 'Vehicle is already assigned to another active driver.' });
+        }
+
         const driverId = data.id || 'drv_' + Date.now();
         const newDriverData = {
           id: driverId,
           name: data.name,
           code: data.code,
-          assignedVehicleId: data.assignedVehicleId || '',
+          assignedVehicleId: targetVehicle,
           ownerId: data.ownerId,
           status: 'active',
           createdAt: new Date().toISOString()
@@ -167,6 +193,19 @@ export const syncController = {
         await firestoreService.setDocument('drivers', driverId, newDriverData);
         result = { success: true };
       } else if (action === 'updateDriver') {
+        const targetVehicle = data.assignedVehicleId;
+        if (targetVehicle !== undefined && !targetVehicle) {
+          return res.status(400).json({ success: false, error: 'Vehicle assignment is required.' });
+        }
+
+        if (targetVehicle) {
+          const allDrivers = await firestoreService.getCollectionData('drivers');
+          const alreadyAssigned = allDrivers.some(d => String(d.id) !== String(data.id) && d.assignedVehicleId === targetVehicle && d.status === 'active');
+          if (alreadyAssigned) {
+            return res.status(400).json({ success: false, error: 'Vehicle is already assigned to another active driver.' });
+          }
+        }
+
         const updates = {};
         if (data.code !== undefined) updates.code = data.code;
         if (data.assignedVehicleId !== undefined) updates.assignedVehicleId = data.assignedVehicleId || '';
@@ -175,36 +214,85 @@ export const syncController = {
       } else if (action === 'deleteDriver') {
         const success = await firestoreService.deleteDocument('drivers', data.id);
         result = { success };
+      } else if (action === 'saveTrip') {
+        const tripId = data.id || 'trip_' + Date.now();
+        await firestoreService.setDocument('trips', tripId, data);
+        result = { success: true };
+      } else if (action === 'updateDriverLocation') {
+        const docId = data.driverId;
+        if (!docId) {
+          result = { success: false, error: 'driverId is required' };
+        } else {
+          const locData = {
+            driverId: docId,
+            driverName: data.driverName || 'Unknown',
+            ownerId: data.ownerId,
+            lat: parseFloat(data.lat),
+            lng: parseFloat(data.lng),
+            lastUpdated: new Date().toISOString()
+          };
+          await firestoreService.setDocument('locations', docId, locData);
+          result = { success: true };
+        }
+      } else if (action === 'deleteDriverLocation') {
+        const docId = data.driverId;
+        if (!docId) {
+          result = { success: false, error: 'driverId is required' };
+        } else {
+          await firestoreService.deleteDocument('locations', docId);
+          result = { success: true };
+        }
+      } else if (action === 'addNotification') {
+        const notifId = data.id || 'notif_' + Date.now();
+        const newNotifData = {
+          id: notifId,
+          type: data.type || 'admin_broadcast',
+          message: data.message,
+          severity: data.severity || 'info',
+          timestamp: data.timestamp || new Date().toISOString(),
+          read: data.read || false
+        };
+        if (data.targetRole) newNotifData.targetRole = data.targetRole;
+        if (data.targetUserId) newNotifData.targetUserId = data.targetUserId;
+        
+        await firestoreService.setDocument('notifications', notifId, newNotifData);
+        result = { success: true };
       }
       // 11. Bundle Get Data
       else if (action === 'getData') {
         const role = req.user.role;
         const ownerId = req.user.ownerId;
 
-        let fills, drivers, vehicles, owners, alerts, paymentEntries, creditActions;
+        let fills, drivers, vehicles, owners, alerts, paymentEntries, creditActions, trips, locations, notifications;
 
         if (role === 'admin') {
-          [fills, drivers, vehicles, owners, alerts, paymentEntries, creditActions] = await Promise.all([
+          [fills, drivers, vehicles, owners, alerts, paymentEntries, creditActions, trips, locations, notifications] = await Promise.all([
             firestoreService.getCollectionData('fills'),
             firestoreService.getCollectionData('drivers'),
             firestoreService.getCollectionData('vehicles'),
             firestoreService.getCollectionData('owners'),
             firestoreService.getCollectionData('alerts'),
             firestoreService.getCollectionData('payments'),
-            firestoreService.getCollectionData('creditActions')
+            firestoreService.getCollectionData('creditActions'),
+            firestoreService.getCollectionData('trips'),
+            firestoreService.getCollectionData('locations'),
+            firestoreService.getCollectionData('notifications')
           ]);
         } else {
           // Recalculate credit for this owner specifically
           await firestoreService.recalculateOwnerCredit(ownerId);
 
-          const [f, d, v, oDoc, a, p, ca] = await Promise.all([
+          const [f, d, v, oDoc, a, p, ca, tr, loc, n] = await Promise.all([
             firestoreService.getCollectionDataFiltered('fills', 'ownerId', ownerId),
             firestoreService.getCollectionDataFiltered('drivers', 'ownerId', ownerId),
             firestoreService.getCollectionDataFiltered('vehicles', 'ownerId', ownerId),
             firestoreService.getDocument('owners', ownerId),
             firestoreService.getCollectionDataFiltered('alerts', 'ownerId', ownerId),
             firestoreService.getCollectionDataFiltered('payments', 'ownerId', ownerId),
-            firestoreService.getCollectionDataFiltered('creditActions', 'ownerId', ownerId)
+            firestoreService.getCollectionDataFiltered('creditActions', 'ownerId', ownerId),
+            firestoreService.getCollectionDataFiltered('trips', 'ownerId', ownerId),
+            firestoreService.getCollectionDataFiltered('locations', 'ownerId', ownerId),
+            firestoreService.getCollectionData('notifications')
           ]);
 
           fills = f;
@@ -214,6 +302,9 @@ export const syncController = {
           alerts = a;
           paymentEntries = p;
           creditActions = ca;
+          trips = tr;
+          locations = loc;
+          notifications = n;
         }
 
         result = {
@@ -224,7 +315,10 @@ export const syncController = {
           owners,
           alerts,
           paymentEntries,
-          creditActions
+          creditActions,
+          trips,
+          locations,
+          notifications
         };
       }
 
