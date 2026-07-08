@@ -1,4 +1,4 @@
-package com.techinnovate.mobility.cng;
+package com.techinnovate.ev;
 
 import com.getcapacitor.BridgeActivity;
 

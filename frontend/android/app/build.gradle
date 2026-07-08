@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.techinnovate.mobility.cng"
+    namespace = "com.techinnovate.ev"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.techinnovate.mobility.cng"
+        applicationId "com.techinnovate.ev"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -16,8 +16,17 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile file("signing.keystore")
+            storePassword "F4d18N13ppaH"
+            keyAlias "my-key-alias"
+            keyPassword "F4d18N13ppaH"
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

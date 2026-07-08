@@ -35,6 +35,15 @@ export const storage = {
     const fills: Fill[] = safeParse<Fill[]>(localStorage.getItem(KEYS.FILLS), [])
     return fills.map(f => ({
       ...f,
+      kgs: typeof f.kgs === 'number' && !isNaN(f.kgs) ? f.kgs : (Number(f.kgs) || 0),
+      rate: typeof f.rate === 'number' && !isNaN(f.rate) ? f.rate : (Number(f.rate) || 0),
+      total: typeof f.total === 'number' && !isNaN(f.total) ? f.total : (Number(f.total) || 0),
+      time: f.time || new Date().toISOString(),
+      mismatch: typeof f.mismatch === 'boolean' ? f.mismatch : false,
+      fuelDropPercent: typeof f.fuelDropPercent === 'number' && !isNaN(f.fuelDropPercent) ? f.fuelDropPercent : (Number(f.fuelDropPercent) || 0),
+      verified: typeof f.verified === 'boolean' ? f.verified : false,
+      odoReading: typeof f.odoReading === 'number' && !isNaN(f.odoReading) ? f.odoReading : (Number(f.odoReading) || 0),
+      distanceDiff: typeof f.distanceDiff === 'number' && !isNaN(f.distanceDiff) ? f.distanceDiff : (Number(f.distanceDiff) || 0),
       pumpGPS: parseGPS(f.pumpGPS),
       receiptGPS: parseGPS(f.receiptGPS),
       odoGPS: parseGPS(f.odoGPS),
@@ -62,7 +71,24 @@ export const storage = {
   getAlerts: (): Alert[] => safeParse(localStorage.getItem(KEYS.ALERTS), []),
   saveAlerts: (alerts: Alert[]) => localStorage.setItem(KEYS.ALERTS, JSON.stringify(alerts)),
   
-  getOfflineQueue: (): Fill[] => safeParse(localStorage.getItem(KEYS.OFFLINE_QUEUE), []),
+  getOfflineQueue: (): Fill[] => {
+    const queue = safeParse<Fill[]>(localStorage.getItem(KEYS.OFFLINE_QUEUE), [])
+    return queue.map(f => ({
+      ...f,
+      kgs: typeof f.kgs === 'number' && !isNaN(f.kgs) ? f.kgs : (Number(f.kgs) || 0),
+      rate: typeof f.rate === 'number' && !isNaN(f.rate) ? f.rate : (Number(f.rate) || 0),
+      total: typeof f.total === 'number' && !isNaN(f.total) ? f.total : (Number(f.total) || 0),
+      time: f.time || new Date().toISOString(),
+      mismatch: typeof f.mismatch === 'boolean' ? f.mismatch : false,
+      fuelDropPercent: typeof f.fuelDropPercent === 'number' && !isNaN(f.fuelDropPercent) ? f.fuelDropPercent : (Number(f.fuelDropPercent) || 0),
+      verified: typeof f.verified === 'boolean' ? f.verified : false,
+      odoReading: typeof f.odoReading === 'number' && !isNaN(f.odoReading) ? f.odoReading : (Number(f.odoReading) || 0),
+      distanceDiff: typeof f.distanceDiff === 'number' && !isNaN(f.distanceDiff) ? f.distanceDiff : (Number(f.distanceDiff) || 0),
+      pumpGPS: parseGPS(f.pumpGPS),
+      receiptGPS: parseGPS(f.receiptGPS),
+      odoGPS: parseGPS(f.odoGPS),
+    }))
+  },
   addToOfflineQueue: (fill: Fill) => {
     const queue = safeParse<Fill[]>(localStorage.getItem(KEYS.OFFLINE_QUEUE), [])
     queue.push(fill)
