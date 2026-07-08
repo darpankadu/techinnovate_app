@@ -17,8 +17,8 @@ export default defineConfig({
       name: 'Techinnovate Fleet CNG',
       short_name: 'CNG Tracker',
       description: 'Fleet CNG Monitoring System',
-      start_url: '/',
-      scope: '/',
+      start_url: process.env.GH_PAGES === 'true' ? '/techinnovate_app/' : '/',
+      scope: process.env.GH_PAGES === 'true' ? '/techinnovate_app/' : '/',
       display: 'standalone',
       background_color: '#F5F6F8',
       theme_color: '#E10600',
@@ -28,50 +28,50 @@ export default defineConfig({
       lang: 'en',
       display_override: ['standalone', 'window-controls-overlay'],
       icons: [
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: '/icon-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' },
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: 'icon-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' },
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
       ],
       shortcuts: [
         {
           name: 'Owner Portal',
           short_name: 'Owner',
-          url: '/?tab=owner',
+          url: process.env.GH_PAGES === 'true' ? '/techinnovate_app/?tab=owner' : '/?tab=owner',
           description: 'Open owner portal'
         },
         {
           name: 'Driver Portal',
           short_name: 'Driver',
-          url: '/?tab=driver',
+          url: process.env.GH_PAGES === 'true' ? '/techinnovate_app/?tab=driver' : '/?tab=driver',
           description: 'Open driver fill-up wizard'
         }
       ],
       screenshots: [
         {
-          src: '/screenshots/01_welcome.png',
+          src: 'screenshots/01_welcome.png',
           sizes: '1280x800',
           type: 'image/png',
           form_factor: 'wide',
           label: 'Welcome Screen'
         },
         {
-          src: '/screenshots/02_owner_login.png',
+          src: 'screenshots/02_owner_login.png',
           sizes: '1280x800',
           type: 'image/png',
           form_factor: 'wide',
           label: 'Owner Login'
         },
         {
-          src: '/screenshots/04_owner_dashboard.png',
+          src: 'screenshots/04_owner_dashboard.png',
           sizes: '1280x800',
           type: 'image/png',
           form_factor: 'wide',
           label: 'Owner Dashboard'
         },
         {
-          src: '/screenshots/18_driver_dashboard.png',
+          src: 'screenshots/18_driver_dashboard.png',
           sizes: '1280x800',
           type: 'image/png',
           form_factor: 'wide',
@@ -80,7 +80,7 @@ export default defineConfig({
       ],
     },
   })],
-  base: '/',
+  base: process.env.GH_PAGES === 'true' ? '/techinnovate_app/' : '/',
   server: {
     host: true,
     port: 5177,

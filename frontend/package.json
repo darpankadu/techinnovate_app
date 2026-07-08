@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
-    "deploy:pages": "npm run build && gh-pages -d dist -r https://github.com/nil3108/techinnovate_app.git"
+    "deploy:pages": "node deploy-helper.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
