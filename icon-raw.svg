@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: red square (maskable-safe: icon mark within central 80%) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E81010"/>
+      <stop offset="100%" stop-color="#B80000"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.15)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Red background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Subtle top shine -->
+  <rect width="1024" height="512" fill="url(#shine)"/>
+
+  <!-- 
+    Techinnovate symbol mark reproduced as SVG:
+    The logo mark is an abstract shape — a rounded arch at top (like an omega / horseshoe)
+    with two rounded teardrop/pin shapes hanging from the bottom ends.
+    Centered at 512,512. Scaled to ~55% of canvas (~560px wide).
+  -->
+  <g transform="translate(512, 510) scale(2.9)" fill="white">
+    <!-- Main arch / horseshoe body -->
+    <!-- The shape: two vertical rounded bars connected at top by an arch, 
+         with teardrop bottoms -->
+    
+    <!-- Left column with rounded bottom teardrop -->
+    <path d="
+      M -52 -30
+      L -52 40
+      Q -52 75 -30 90
+      Q -8 105 8 85
+      Q 22 68 18 45
+      L 18 -30
+      Z
+    " rx="18"/>
+    
+    <!-- Right column with rounded bottom teardrop -->
+    <path d="
+      M 52 -30
+      L 52 40
+      Q 52 75 30 90
+      Q 8 105 -8 85
+      Q -22 68 -18 45
+      L -18 -30
+      Z
+    " rx="18"/>
+
+    <!-- Top arch connecting the two columns -->
+    <path d="
+      M -52 -30
+      Q -52 -110 0 -110
+      Q 52 -110 52 -30
+      L 18 -30
+      Q 18 -78 0 -78
+      Q -18 -78 -18 -30
+      Z
+    "/>
+  </g>
+</svg>

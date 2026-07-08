@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#F52020"/>
+      <stop offset="100%" stop-color="#BB0000"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
+
+  <!--
+    TECHINNOVATE SYMBOL MARK — white on red
+    
+    Symbol is centered horizontally. Vertically offset slightly upward
+    so bulbs don't get clipped.
+    
+    Design reference: The logo mark has:
+      - A thick horseshoe/omega arch at top with hollow center
+      - Two thick rectangular arms hanging down
+      - Two round bulbs (like teardrops) at the bottom of each arm
+    
+    Canvas: 1024 x 1024
+    Symbol bounding box: roughly 380px wide, 420px tall
+    Symbol top-left starting: approximately (322, 230)
+    Symbol horizontal center: 512
+    
+    Arch:
+      Center of curvature: (512, 490)
+      Outer radius: 190  → left edge x = 512-190 = 322, right edge x = 512+190 = 702
+      Inner radius: 105  → left inner x = 512-105 = 407, right inner x = 512+105 = 617
+      Arch bottom Y: 490 (arch baseline, arms start here)
+      Arch top Y: 490 - 190 = 300 (topmost point)
+    
+    Arms (below arch):
+      Left arm:  x=322 to x=407 (width=85), y=490 down to y=630, rounded ends
+      Right arm: x=617 to x=702 (width=85), y=490 down to y=630, rounded ends
+    
+    Bulbs:
+      Left:  center (364, 720), rx=78, ry=90
+      Right: center (660, 720), rx=78, ry=90
+  -->
+
+  <!-- ARCH RING: outer semicircle CCW minus inner semicircle CW = ring shape -->
+  <!-- Even-odd trick: draw outer path CW, inner path CCW, combined with evenodd -->
+  <path fill="white" fill-rule="evenodd"
+    d="
+      M 322,490
+      A 190,190 0 0,1 702,490
+      L 617,490
+      A 105,105 0 0,0 407,490
+      Z
+    "
+  />
+
+  <!-- LEFT ARM: tall pill/capsule shape -->
+  <rect x="322" y="448" width="85" height="215" rx="42" fill="white"/>
+
+  <!-- RIGHT ARM: tall pill/capsule shape -->
+  <rect x="617" y="448" width="85" height="215" rx="42" fill="white"/>
+
+  <!-- LEFT BULB -->
+  <ellipse cx="364" cy="720" rx="82" ry="92" fill="white"/>
+
+  <!-- RIGHT BULB -->
+  <ellipse cx="660" cy="720" rx="82" ry="92" fill="white"/>
+
+</svg>

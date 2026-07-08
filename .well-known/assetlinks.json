@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.techinnovate.ev",
+        "sha256_cert_fingerprints": ["7E:23:28:6E:7E:2F:A6:8F:7F:9D:FC:F7:B2:D4:E6:99:DF:CD:B8:C5:96:EF:37:26:31:C2:AA:C0:4C:EB:91:3D"]
+      }
+    }]
