@@ -464,11 +464,12 @@ export default function App() {
               }} 
             />
           )}
-          {view === 'driver-dash' && session && <DriverDashboard lang={lang} setLang={changeLang} session={session} setView={setView} setSession={setSession} syncKey={syncKey} key="driver-dashboard" />}
-          {view === 'wizard' && session && <FillWizard lang={lang} session={session} setView={setView} syncKey={syncKey} key="fill-wizard" />}
           {view === 'owner-dash' && session && <OwnerDashboard lang={lang} session={session} syncKey={syncKey} key="owner-dashboard" loadData={loadDataFromBackend} liveLocations={liveLocations} />}
           {view === 'admin-dash' && <AdminDashboard lang={lang} syncKey={syncKey} syncStatus={syncStatus} loadData={loadDataFromBackend} key="admin-dashboard" />}
         </AnimatePresence>
+
+        {view === 'driver-dash' && session && <DriverDashboard lang={lang} setLang={changeLang} session={session} setView={setView} setSession={setSession} syncKey={syncKey} key="driver-dashboard" />}
+        {view === 'wizard' && session && <FillWizard lang={lang} session={session} setView={setView} syncKey={syncKey} key="fill-wizard" />}
       </main>
     </div>
   )
