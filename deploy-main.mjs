@@ -32,8 +32,8 @@ try {
     console.log('No changes to commit.');
   }
   
-  console.log('Pushing to target main...');
-  execSync('git push target main', { stdio: 'inherit' });
+  console.log('Pushing to origin main...');
+  execSync('git push origin main', { stdio: 'inherit' });
   console.log('Deployed successfully!');
 } catch (error) {
   console.error('Deployment failed:', error.message);
