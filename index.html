@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/jpeg" href="/techinnovate_app/logo.jpg" />
+    <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#E10600" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -11,27 +11,17 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Techinnovate - Fleet CNG Tracker v3.0</title>
-    <script type="module" crossorigin src="/techinnovate_app/assets/index-CKeMH6by.js"></script>
-    <link rel="stylesheet" crossorigin href="/techinnovate_app/assets/index-xwErYo4t.css">
-  <link rel="manifest" href="/techinnovate_app/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/techinnovate_app/registerSW.js"></script></head>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <title>Techinnovate Mobility — Fleet CNG</title>
+    <script type="module" crossorigin src="/assets/index-Cxpxl1AA.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-B84ChdP1.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-Btlz1-Nv.css">
+  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
   <body>
-    <div id="root"></div>
-    <script>
-      // Force clear ALL caches and service workers
-      if ('caches' in window) {
-        caches.keys().then(names => names.forEach(n => caches.delete(n)))
-      }
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(reg => reg.unregister())
-        })
-      }
-      // Force reload if this is the first load after cache clear
-      if (!sessionStorage.getItem('v3_loaded')) {
-        sessionStorage.setItem('v3_loaded', 'true')
-        window.location.reload()
-      }
-    </script>
+    <div id="root"></div>
   </body>
 </html>
