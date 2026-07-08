@@ -20,7 +20,7 @@ export const BACKEND_API_URL = (() => {
   }
   
   if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:8080/api/sync`;
+    return 'https://cng-fleet-tracker-koyeb.vercel.app/api/sync';
   }
   
   return defaultUrl;

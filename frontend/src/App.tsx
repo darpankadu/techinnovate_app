@@ -361,7 +361,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#F5F6F8] flex items-center justify-center">
         <div className="text-center">
-          <img src="/icon-512.png" alt="CNG Fleet Tracker" className="h-16 w-16 mx-auto mb-4 object-contain" />
+          <img src="icon-512.png" alt="CNG Fleet Tracker" className="h-16 w-16 mx-auto mb-4 object-contain" />
           <p className="text-[13px] text-[#6B7280]">Loading...</p>
         </div>
       </div>
@@ -374,7 +374,7 @@ export default function App() {
       {view !== 'driver-dash' && (
         <header className="sticky top-0 z-40 bg-[#F5F6F8] border-b border-[#E2E6EB]">
         <div className={`mx-auto px-4 h-14 flex items-center justify-between ${view === 'admin-dash' || view === 'owner-dash' ? 'max-w-full px-6' : 'max-w-[480px]'}`}>
-          <img src="/logo.png" alt="CNG Fleet Tracker" className="h-8" />
+          <img src="logo.png" alt="CNG Fleet Tracker" className="h-8" />
           
           <div className="flex items-center gap-2">
             {syncStatus === 'failed' && (
@@ -490,7 +490,7 @@ function WelcomeView({ lang, setView }: { lang: Language; setView: (v: View) => 
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-32 rounded-full blur-3xl opacity-20" style={{ background: '#E10600' }} />
 
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="relative z-10 text-center">
-          <img src="/only_logo-removebg-preview.png" alt="TechInnovate" className="w-20 h-20 mx-auto mb-5 object-contain" />
+          <img src="only_logo-removebg-preview.png" alt="TechInnovate" className="w-20 h-20 mx-auto mb-5 object-contain" />
           <h1 className="text-white font-black leading-none mb-2" style={{ fontFamily: "'Archivo', sans-serif", fontSize: 28, letterSpacing: '-0.03em' }}>
             TECHINNOVATE<br />MOBILITY
           </h1>
